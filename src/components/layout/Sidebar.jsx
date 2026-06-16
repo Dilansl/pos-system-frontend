@@ -7,7 +7,7 @@ import {
   MdAssessment,
   MdLogout,
 } from 'react-icons/md';
-import { FaBoxOpen, FaUsers, FaUserFriends, FaUndo } from 'react-icons/fa';
+import { FaBoxOpen, FaUsers, FaUserFriends, FaUndo, FaReceipt } from 'react-icons/fa';
 
 function Sidebar() {
   const user = useAuthStore((state) => state.user);
@@ -28,6 +28,7 @@ function Sidebar() {
     { path: '/staff',     label: 'Staff', icon: <FaUsers />, roles: ['admin'] },
     { path: '/customers', label: 'Customers', icon: <FaUserFriends />, roles: ['admin', 'manager', 'cashier'] },
     { path: '/returns',   label: 'Returns', icon: <FaUndo />, roles: ['admin', 'manager'] },
+    { path: '/transactions', label: 'Transactions', icon: <FaReceipt />, roles: ['admin', 'manager'] },
   ];
 
   const visibleItems = menuItems.filter((item) =>

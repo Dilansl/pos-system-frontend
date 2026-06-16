@@ -12,6 +12,7 @@ import Reports from './pages/Reports';
 import Staff from './pages/Staff';
 import Customers from './pages/Customers';
 import Returns from './pages/Returns';
+import Transactions from './pages/Transactions';
 
 function ProtectedRoute({ children }) {
   const token = useAuthStore((state) => state.token);
@@ -40,6 +41,7 @@ function App() {
           <Route path="/staff" element={<Staff />} />
           <Route path="/customers" element={<Customers />} />
           <Route path="/returns" element={<Returns />} />
+          <Route path="/transactions" element={<Transactions />} />
         </Route>
 
         <Route path="/" element={<Navigate to="/dashboard" />} />
