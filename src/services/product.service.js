@@ -31,6 +31,16 @@ const productService = {
     return response.data;
   },
 
+  addVariant: async (productId, variantData) => {
+    const response = await api.post(`/products/${productId}/variants`, variantData);
+    return response.data;
+  },
+
+  updateVariant: async (variantId, variantData) => {
+    const response = await api.put(`/products/variants/${variantId}`, variantData);
+    return response.data;
+  },
+
   // Categories
   getCategories: async () => {
     const response = await api.get('/products/categories');

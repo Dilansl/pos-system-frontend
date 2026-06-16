@@ -4,9 +4,9 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { FaMoneyBillWave, FaShoppingCart, FaChartLine, FaUndo } from 'react-icons/fa';
-import reportService from '../services/report.service';
 
+import reportService from '../services/report.service';
+import { FaMoneyBillWave, FaShoppingCart, FaChartLine, FaUndo, FaPercent } from 'react-icons/fa';
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 function Reports() {
@@ -62,6 +62,8 @@ function Reports() {
 
   const stats = summary ? [
     { label: 'Total Revenue', value: `Rs. ${Number(summary.total_revenue).toLocaleString()}`, icon: <FaMoneyBillWave />, color: 'bg-green-500' },
+    { label: 'Total Profit', value: `Rs. ${Number(summary.total_profit).toLocaleString()}`, icon: <FaChartLine />, color: 'bg-emerald-600' },
+    { label: 'Profit Margin', value: `${Number(summary.profit_margin).toFixed(1)}%`, icon: <FaPercent />, color: 'bg-teal-500' },
     { label: 'Transactions', value: summary.total_transactions, icon: <FaShoppingCart />, color: 'bg-blue-500' },
     { label: 'Average Sale', value: `Rs. ${Number(summary.average_sale).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: <FaChartLine />, color: 'bg-purple-500' },
     { label: 'Refunds', value: `Rs. ${Number(summary.total_refunds).toLocaleString()}`, icon: <FaUndo />, color: 'bg-red-500' },

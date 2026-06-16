@@ -20,6 +20,11 @@ const saleService = {
     return response.data;
   },
 
+  getByReceiptSeq: async (seq) => {
+    const response = await api.get(`/sales/receipt/${seq}`);
+    return response.data;
+  },
+
   
 };
 

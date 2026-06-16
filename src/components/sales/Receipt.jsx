@@ -7,16 +7,16 @@ const Receipt = forwardRef(({ sale }, ref) => {
     <div ref={ref} className="p-6 text-sm" style={{ width: '300px', fontFamily: 'monospace' }}>
       {/* Header */}
       <div className="text-center mb-4">
-        <h2 className="text-lg font-bold">POS System</h2>
+        <h2 className="text-lg font-bold">ROPYCO Fashion</h2>
         <p className="text-xs">Clothing Shop</p>
-        <p className="text-xs">Negombo, Sri Lanka</p>
-        <p className="text-xs">Tel: 077-1234567</p>
+        <p className="text-xs">Nittambuwwa, Sri Lanka</p>
+        <p className="text-xs">Tel: 0706201176</p>
       </div>
 
       <div className="border-t border-b border-dashed border-gray-400 py-2 mb-2 text-xs">
         <div className="flex justify-between">
           <span>Receipt:</span>
-          <span>#{sale.id?.slice(0, 8)}</span>
+          <span>{sale.receipt_seq ? `RF-${String(sale.receipt_seq).padStart(4, '0')}` : `#${sale.id?.slice(0, 8)}`}</span>
         </div>
         <div className="flex justify-between">
           <span>Cashier:</span>

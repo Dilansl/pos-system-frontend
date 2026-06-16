@@ -20,7 +20,10 @@ function Sales() {
 
   const {
     items, addItem, increaseQty, decreaseQty, removeItem,
-    clearCart, getSubtotal, getTotal, getItemCount,
+    setItemDiscountType, setItemDiscountValue,
+    getItemDiscount, getItemLineTotal,
+    getItemPromoDiscount, getItemBargainDiscount,
+    clearCart, getSubtotal, getTotal, getTotalDiscount, getItemCount,
   } = useCartStore();
 
   const handlePrint = useReactToPrint({
@@ -40,6 +43,19 @@ function Sales() {
       setResults(res.data);
     } catch (err) {
       toast.error('Search failed.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleShowAll = async () => {
+    setSearchTerm('');
+    setSearching(true);
+    try {
+      const res = await productService.search('');
+      setResults(res.data);
+    } catch (err) {
+      toast.error('Failed to load items.');
     } finally {
       setSearching(false);
     }
@@ -68,15 +84,15 @@ function Sales() {
 
     const saleData = {
       subtotal: getSubtotal(),
-      discountAmount: 0,
+      discountAmount: getTotalDiscount(),
       taxAmount: 0,
       total: total,
       items: items.map((i) => ({
         variantId: i.variantId,
         quantity: i.quantity,
         unitPrice: i.sellPrice,
-        discountAmount: 0,
-        lineTotal: i.sellPrice * i.quantity,
+        discountAmount: getItemDiscount(i),
+        lineTotal: getItemLineTotal(i),
       })),
       payments: [{ method: paymentMethod, amount: total, reference: null }],
     };
@@ -84,7 +100,6 @@ function Sales() {
     try {
       const res = await saleService.create(saleData);
       const fullSale = await saleService.getById(res.data.id);
-      // Attach cash + change for the receipt (only for cash payments)
       const saleForReceipt = {
         ...fullSale.data,
         cashReceived: paymentMethod === 'cash' ? Number(cashReceived) : null,
@@ -103,11 +118,10 @@ function Sales() {
     }
   };
 
-  const startNewSale = () => {
-    setCompletedSale(null);
-  };
+  const startNewSale = () => setCompletedSale(null);
 
   const subtotal = getSubtotal();
+  const totalDiscount = getTotalDiscount();
   const total = getTotal();
   const change = Number(cashReceived) - total;
 
@@ -118,23 +132,14 @@ function Sales() {
         <FaCheckCircle className="text-green-500 text-6xl mb-4" />
         <h2 className="text-2xl font-bold text-gray-800 mb-2">Sale Completed!</h2>
         <p className="text-gray-500 mb-6">Total: Rs. {Number(completedSale.total).toLocaleString()}</p>
-
-        {/* Hidden receipt for printing */}
         <div style={{ display: 'none' }}>
           <Receipt ref={receiptRef} sale={completedSale} />
         </div>
-
         <div className="flex gap-3">
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700"
-          >
+          <button onClick={handlePrint} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
             <FaPrint /> Print Receipt
           </button>
-          <button
-            onClick={startNewSale}
-            className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700"
-          >
+          <button onClick={startNewSale} className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700">
             New Sale
           </button>
         </div>
@@ -148,35 +153,78 @@ function Sales() {
       {/* LEFT — product search */}
       <div className="flex-1 p-6 overflow-y-auto">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">Sales (POS)</h2>
-        <div className="relative mb-4">
-          <FaSearch className="absolute left-3 top-3.5 text-gray-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={handleSearch}
-            placeholder="Search by name, barcode, size, colour..."
-            className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            autoFocus
-          />
+        <div className="flex gap-2 mb-4">
+          <div className="relative flex-1">
+            <FaSearch className="absolute left-3 top-3.5 text-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={handleSearch}
+              placeholder="Search by name, barcode, size, colour..."
+              className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+            />
+          </div>
+          <button
+            onClick={handleShowAll}
+            className="px-4 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm whitespace-nowrap"
+          >
+            All Items
+          </button>
         </div>
         {searching && <p className="text-gray-500 text-sm">Searching...</p>}
         <div className="grid grid-cols-2 gap-3">
-          {results.map((product) => (
-            <button
-              key={product.id}
-              onClick={() => handleAddToCart(product)}
-              className="text-left bg-white border border-gray-200 rounded-lg p-3 hover:border-blue-500 hover:shadow transition"
-            >
-              <p className="font-medium text-gray-800">{product.product_name}</p>
-              <p className="text-xs text-gray-500">{product.size} · {product.color}</p>
-              <div className="flex justify-between items-center mt-2">
-                <span className="font-bold text-blue-600">Rs. {Number(product.sell_price).toLocaleString()}</span>
-                <span className={`text-xs ${product.stock_quantity < 1 ? 'text-red-500' : 'text-gray-500'}`}>
-                  Stock: {product.stock_quantity}
-                </span>
-              </div>
-            </button>
-          ))}
+          {results.map((product) => {
+            // Variant (batch clearance) promo wins; else product promo
+            const effPromoType = product.variant_promo_type || product.product_promo_type || null;
+            const effPromoValue = Number(
+              product.variant_promo_type ? product.variant_promo_value : product.product_promo_value
+            ) || 0;
+            const isClearance = !!product.variant_promo_type;
+            const hasPromo = effPromoType && effPromoValue > 0;
+            const sellPrice = Number(product.sell_price);
+            let promoPrice = sellPrice;
+            if (hasPromo) {
+              promoPrice = effPromoType === 'percent'
+                ? sellPrice - (sellPrice * effPromoValue / 100)
+                : sellPrice - effPromoValue;
+              if (promoPrice < 0) promoPrice = 0;
+            }
+            return (
+              <button
+                key={product.id}
+                onClick={() => handleAddToCart(product)}
+                className="relative text-left bg-white border border-gray-200 rounded-lg p-3 hover:border-blue-500 hover:shadow transition"
+              >
+                {hasPromo && (
+                  <span className={`absolute top-2 right-2 text-[10px] font-bold text-white px-1.5 py-0.5 rounded ${isClearance ? 'bg-amber-500' : 'bg-red-500'}`}>
+                    {isClearance ? 'CLEARANCE ' : ''}{effPromoType === 'percent' ? `-${effPromoValue}%` : `-Rs.${effPromoValue}`}
+                  </span>
+                )}
+                <p className="font-medium text-gray-800">
+                  {product.product_name}
+                  {product.barcode && (
+                    <span className="text-xs text-gray-400 font-mono ml-1">[{product.barcode}]</span>
+                  )}
+                </p>
+                <div className="flex justify-between items-center mt-2">
+                  <div className="flex items-center gap-2">
+                    {hasPromo ? (
+                      <>
+                        <span className="text-xs text-gray-400 line-through">Rs. {sellPrice.toLocaleString()}</span>
+                        <span className="font-bold text-red-600">Rs. {promoPrice.toLocaleString()}</span>
+                      </>
+                    ) : (
+                      <span className="font-bold text-blue-600">Rs. {sellPrice.toLocaleString()}</span>
+                    )}
+                  </div>
+                  <span className={`text-xs ${product.stock_quantity < 1 ? 'text-red-500' : 'text-gray-500'}`}>
+                    Stock: {product.stock_quantity}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
         {searchTerm && results.length === 0 && !searching && (
           <p className="text-gray-500 text-sm mt-4">No products found.</p>
@@ -193,36 +241,105 @@ function Sales() {
           {items.length === 0 ? (
             <p className="text-gray-400 text-sm text-center mt-8">Cart is empty. Search and add products.</p>
           ) : (
-            items.map((item) => (
-              <div key={item.variantId} className="mb-3 pb-3 border-b border-gray-100">
-                <div className="flex justify-between">
-                  <p className="font-medium text-sm text-gray-800">{item.productName}</p>
-                  <button onClick={() => removeItem(item.variantId)} className="text-red-400 hover:text-red-600">
-                    <FaTrash size={12} />
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500">{item.size} · {item.color}</p>
-                <div className="flex justify-between items-center mt-2">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => decreaseQty(item.variantId)} className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center hover:bg-gray-300">
-                      <FaMinus size={10} />
-                    </button>
-                    <span className="text-sm w-6 text-center">{item.quantity}</span>
-                    <button onClick={() => increaseQty(item.variantId)} className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center hover:bg-gray-300">
-                      <FaPlus size={10} />
+            items.map((item) => {
+              const itemDiscount = getItemDiscount(item);
+              const lineTotal = getItemLineTotal(item);
+              const promoDiscount = getItemPromoDiscount(item);
+              const bargainDiscount = getItemBargainDiscount(item);
+              const hasPromo = item.promoType && item.promoValue > 0;
+              return (
+                <div key={item.variantId} className="mb-3 pb-3 border-b border-gray-100">
+                  <div className="flex justify-between">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-sm text-gray-800">{item.productName}</p>
+                      {hasPromo && (
+                        <span className="text-[10px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+                          PROMO {item.promoType === 'percent' ? `${item.promoValue}%` : `Rs.${item.promoValue}`}
+                        </span>
+                      )}
+                    </div>
+                    <button onClick={() => removeItem(item.variantId)} className="text-red-400 hover:text-red-600">
+                      <FaTrash size={12} />
                     </button>
                   </div>
-                  <span className="font-medium text-sm">Rs. {(item.sellPrice * item.quantity).toLocaleString()}</span>
+                  <p className="text-xs text-gray-500">{item.size} · {item.color}</p>
+
+                  <div className="flex justify-between items-center mt-2">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => decreaseQty(item.variantId)} className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center hover:bg-gray-300">
+                        <FaMinus size={10} />
+                      </button>
+                      <span className="text-sm w-6 text-center">{item.quantity}</span>
+                      <button onClick={() => increaseQty(item.variantId)} className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center hover:bg-gray-300">
+                        <FaPlus size={10} />
+                      </button>
+                    </div>
+                    <div className="text-right">
+                      {itemDiscount > 0 && (
+                        <span className="text-xs text-gray-400 line-through block">
+                          Rs. {(item.sellPrice * item.quantity).toLocaleString()}
+                        </span>
+                      )}
+                      <span className="font-medium text-sm">Rs. {lineTotal.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  {/* Promo line (auto-applied, read-only) */}
+                  {promoDiscount > 0 && (
+                    <div className="flex justify-between items-center mt-1.5 text-xs">
+                      <span className="text-green-600">
+                        Promo ({item.promoType === 'percent' ? `${item.promoValue}%` : `Rs.${item.promoValue}/unit`})
+                      </span>
+                      <span className="text-green-600">−Rs. {promoDiscount.toLocaleString()}</span>
+                    </div>
+                  )}
+
+                  {/* Discount control — bargain (on top of promo) */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-gray-500">{hasPromo ? 'Extra:' : 'Discount:'}</span>
+                    <div className="flex border border-gray-300 rounded overflow-hidden">
+                      <button
+                        onClick={() => setItemDiscountType(item.variantId, 'percent')}
+                        className={`px-2 py-0.5 text-xs ${item.discountType === 'percent' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                      >
+                        %
+                      </button>
+                      <button
+                        onClick={() => setItemDiscountType(item.variantId, 'fixed')}
+                        className={`px-2 py-0.5 text-xs ${item.discountType === 'fixed' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                      >
+                        Rs
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      value={item.discountValue || ''}
+                      onChange={(e) => setItemDiscountValue(item.variantId, e.target.value)}
+                      placeholder="0"
+                      className="w-16 px-2 py-0.5 border border-gray-300 rounded text-xs"
+                    />
+                    {bargainDiscount > 0 && (
+                      <span className="text-xs text-green-600">−Rs. {bargainDiscount.toLocaleString()}</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
+
         <div className="p-4 border-t border-gray-200">
           <div className="flex justify-between text-sm mb-1">
             <span className="text-gray-600">Subtotal</span>
             <span>Rs. {subtotal.toLocaleString()}</span>
           </div>
+          {totalDiscount > 0 && (
+            <div className="flex justify-between text-sm mb-1 text-green-600">
+              <span>Total Discount</span>
+              <span>−Rs. {totalDiscount.toLocaleString()}</span>
+            </div>
+          )}
           <div className="flex justify-between font-bold text-lg mb-3">
             <span>Total</span>
             <span className="text-blue-600">Rs. {total.toLocaleString()}</span>

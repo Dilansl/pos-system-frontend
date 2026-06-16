@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 
 const useCartStore = create((set, get) => ({
-  items: [],        // each: { variantId, productName, size, color, sellPrice, quantity, stockQuantity }
-  discount: 0,      // overall discount amount
+  items: [],  // each item also has: discountType ('percent'|'fixed'), discountValue (number), promoType, promoValue
 
   // Add an item to the cart (or increase quantity if already there)
   addItem: (product) => {
@@ -10,7 +9,6 @@ const useCartStore = create((set, get) => ({
     const existing = items.find((i) => i.variantId === product.id);
 
     if (existing) {
-      // Already in cart — increase quantity (if stock allows)
       if (existing.quantity < product.stock_quantity) {
         set({
           items: items.map((i) =>
@@ -21,7 +19,6 @@ const useCartStore = create((set, get) => ({
         });
       }
     } else {
-      // New item
       set({
         items: [
           ...items,
@@ -34,13 +31,21 @@ const useCartStore = create((set, get) => ({
             sellPrice: Number(product.sell_price),
             quantity: 1,
             stockQuantity: product.stock_quantity,
+            discountType: 'percent',  // 'percent' or 'fixed'
+            discountValue: 0,          // the number the cashier types
+            // Promotion: variant (batch clearance) wins; otherwise product-level promo
+            promoType: product.variant_promo_type || product.product_promo_type || null,
+            promoValue: Number(
+              product.variant_promo_type ? product.variant_promo_value : product.product_promo_value
+            ) || 0,
+            // Track whether this came from a batch clearance (for the badge label)
+            isClearance: !!product.variant_promo_type,  // the promo number
           },
         ],
       });
     }
   },
 
-  // Increase quantity
   increaseQty: (variantId) => {
     set({
       items: get().items.map((i) =>
@@ -51,7 +56,6 @@ const useCartStore = create((set, get) => ({
     });
   },
 
-  // Decrease quantity (remove if hits 0)
   decreaseQty: (variantId) => {
     set({
       items: get()
@@ -64,24 +68,83 @@ const useCartStore = create((set, get) => ({
     });
   },
 
-  // Remove an item completely
   removeItem: (variantId) => {
     set({ items: get().items.filter((i) => i.variantId !== variantId) });
   },
 
-  // Set discount amount
-  setDiscount: (amount) => set({ discount: amount }),
+  // Set discount type ('percent' or 'fixed') for an item
+  setItemDiscountType: (variantId, type) => {
+    set({
+      items: get().items.map((i) =>
+        i.variantId === variantId ? { ...i, discountType: type, discountValue: 0 } : i
+      ),
+    });
+  },
 
-  // Clear the whole cart (after sale completes)
-  clearCart: () => set({ items: [], discount: 0 }),
+  // Set discount value for an item
+  setItemDiscountValue: (variantId, value) => {
+    set({
+      items: get().items.map((i) =>
+        i.variantId === variantId ? { ...i, discountValue: Number(value) || 0 } : i
+      ),
+    });
+  },
 
-  // Calculated totals
+  clearCart: () => set({ items: [] }),
+
+  // ─── Calculations ───────────────────────────────
+
+  // Promotion discount in rupees for one item (applied first, before bargain)
+  getItemPromoDiscount: (item) => {
+    const lineGross = item.sellPrice * item.quantity;
+    if (!item.promoType || !item.promoValue) return 0;
+    let discount = 0;
+    if (item.promoType === 'percent') {
+      discount = lineGross * (item.promoValue / 100);
+    } else {
+      discount = item.promoValue * item.quantity;  // fixed rupees per unit
+    }
+    return Math.min(Math.max(discount, 0), lineGross);
+  },
+
+  // Bargain (cashier) discount in rupees — applied on the price AFTER promo
+  getItemBargainDiscount: (item) => {
+    const lineGross = item.sellPrice * item.quantity;
+    const afterPromo = lineGross - get().getItemPromoDiscount(item);
+    let discount = 0;
+    if (item.discountType === 'percent') {
+      discount = afterPromo * (item.discountValue / 100);
+    } else {
+      discount = item.discountValue;  // fixed rupees
+    }
+    // Never discount more than what's left after the promo
+    return Math.min(Math.max(discount, 0), afterPromo);
+  },
+
+  // Total discount in rupees for one item (promo + bargain combined)
+  getItemDiscount: (item) => {
+    return get().getItemPromoDiscount(item) + get().getItemBargainDiscount(item);
+  },
+
+  // Line total after promo + bargain
+  getItemLineTotal: (item) => {
+    const lineGross = item.sellPrice * item.quantity;
+    return lineGross - get().getItemDiscount(item);
+  },
+
+  // Subtotal before any discounts
   getSubtotal: () => {
     return get().items.reduce((sum, i) => sum + i.sellPrice * i.quantity, 0);
   },
 
+  // Total discount across all items (promo + bargain)
+  getTotalDiscount: () => {
+    return get().items.reduce((sum, i) => sum + get().getItemDiscount(i), 0);
+  },
+
+  // Final total (subtotal − all discounts)
   getTotal: () => {
-    return get().getSubtotal() - get().discount;
+    return get().getSubtotal() - get().getTotalDiscount();
   },
 
   getItemCount: () => {
