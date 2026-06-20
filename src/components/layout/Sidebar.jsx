@@ -7,7 +7,7 @@ import {
   MdAssessment,
   MdLogout,
 } from 'react-icons/md';
-import { FaBoxOpen, FaUsers, FaUserFriends, FaUndo, FaReceipt } from 'react-icons/fa';
+import { FaBoxOpen, FaUsers, FaUserFriends, FaUndo, FaReceipt, FaCashRegister, FaBarcode } from 'react-icons/fa';
 
 function Sidebar() {
   const user = useAuthStore((state) => state.user);
@@ -22,6 +22,7 @@ function Sidebar() {
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <MdDashboard />, roles: ['admin', 'manager', 'cashier'] },
     { path: '/sales',     label: 'Sales (POS)', icon: <MdPointOfSale />, roles: ['admin', 'manager', 'cashier'] },
+    { path: '/shift',     label: 'Shift', icon: <FaCashRegister />, roles: ['admin', 'manager', 'cashier'] },
     { path: '/products',  label: 'Products', icon: <FaBoxOpen />, roles: ['admin'] },
     { path: '/inventory', label: 'Inventory', icon: <MdInventory2 />, roles: ['admin', 'manager'] },
     { path: '/reports',   label: 'Reports', icon: <MdAssessment />, roles: ['admin', 'manager'] },
@@ -29,6 +30,7 @@ function Sidebar() {
     { path: '/customers', label: 'Customers', icon: <FaUserFriends />, roles: ['admin', 'manager', 'cashier'] },
     { path: '/returns',   label: 'Returns', icon: <FaUndo />, roles: ['admin', 'manager'] },
     { path: '/transactions', label: 'Transactions', icon: <FaReceipt />, roles: ['admin', 'manager'] },
+    { path: '/barcodes',  label: 'Barcode Printing', icon: <FaBarcode />, roles: ['admin', 'manager'] },
   ];
 
   const visibleItems = menuItems.filter((item) =>

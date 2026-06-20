@@ -13,6 +13,8 @@ import Staff from './pages/Staff';
 import Customers from './pages/Customers';
 import Returns from './pages/Returns';
 import Transactions from './pages/Transactions';
+import Shift from './pages/Shift';
+import BarcodePrint from './pages/BarcodePrint';
 
 function ProtectedRoute({ children }) {
   const token = useAuthStore((state) => state.token);
@@ -42,6 +44,9 @@ function App() {
           <Route path="/customers" element={<Customers />} />
           <Route path="/returns" element={<Returns />} />
           <Route path="/transactions" element={<Transactions />} />
+          <Route path="/shift" element={<Shift />} />
+          <Route path="/barcodes" element={<BarcodePrint />} />
+           
         </Route>
 
         <Route path="/" element={<Navigate to="/dashboard" />} />
