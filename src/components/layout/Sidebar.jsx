@@ -40,7 +40,7 @@ function Sidebar() {
   return (
     <div className="w-60 bg-gray-900 text-white flex flex-col h-screen">
       <div className="p-5 border-b border-gray-700">
-        <h1 className="text-xl font-bold">POS System</h1>
+        <h1 className="text-xl font-bold ">ROPYCO Fashion</h1>
         <p className="text-xs text-gray-400 mt-1">
           {user?.name} · {user?.role}
         </p>
