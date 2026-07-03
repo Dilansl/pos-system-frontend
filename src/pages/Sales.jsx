@@ -207,6 +207,9 @@ function Sales() {
                     <span className="text-xs text-gray-400 font-mono ml-1">[{product.barcode}]</span>
                   )}
                 </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {product.size || '—'}{product.color ? ` · ${product.color}` : ''}
+                </p>
                 <div className="flex justify-between items-center mt-2">
                   <div className="flex items-center gap-2">
                     {hasPromo ? (
