@@ -48,6 +48,22 @@ function Sales() {
     }
   };
 
+  const handleBarcodeScan = async (e) => {
+    if (e.key !== 'Enter') return;
+    const code = searchTerm.trim();
+    if (!code) return;
+
+    try {
+      const res = await productService.getByBarcode(code);
+      handleAddToCart(res.data);
+      setSearchTerm('');
+      setResults([]);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Barcode not found.');
+      setSearchTerm('');
+    }
+  };
+
   const handleShowAll = async () => {
     setSearchTerm('');
     setSearching(true);
@@ -160,6 +176,7 @@ function Sales() {
               type="text"
               value={searchTerm}
               onChange={handleSearch}
+              onKeyDown={handleBarcodeScan}
               placeholder="Search by name, barcode, size, colour..."
               className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               autoFocus
