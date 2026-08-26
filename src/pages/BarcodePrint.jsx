@@ -6,8 +6,13 @@ import JsBarcode from 'jsbarcode';
 import productService from '../services/product.service';
 
 // Single barcode label (name + barcode + price) — used for PREVIEW
-function BarcodeLabel({ shopName, productName, code, price }) {
+function BarcodeLabel({ shopName, productName, code, price, labelWidth, labelHeight }) {
   const svgRef = useRef(null);
+
+  // Scale mm → px for on-screen preview (4px per mm gives a readable, accurate size)
+  const PX_PER_MM = 4;
+  const previewWidth = labelWidth * PX_PER_MM;
+  const previewHeight = labelHeight * PX_PER_MM;
 
   useEffect(() => {
     if (svgRef.current && code) {
@@ -15,19 +20,22 @@ function BarcodeLabel({ shopName, productName, code, price }) {
         JsBarcode(svgRef.current, code, {
           format: 'CODE128',
           width: 1.6,
-          height: 40,
-          fontSize: 12,
-          margin: 4,
+          height: Math.max(20, previewHeight * 0.4),
+          fontSize: 16,
+          margin: 2,
           displayValue: true,
         });
       } catch (e) {
         // invalid code — ignore
       }
     }
-  }, [code]);
+  }, [code, previewHeight]);
 
   return (
-    <div className="border border-gray-300 rounded p-2 text-center bg-white" style={{ width: '200px' }}>
+    <div
+      className="border border-gray-300 rounded p-2 text-center bg-white flex flex-col justify-center overflow-hidden"
+      style={{ width: `${previewWidth}px`, height: `${previewHeight}px` }}
+    >
       <p className="text-[11px] font-bold text-gray-800 leading-tight">{shopName}</p>
       <p className="text-[11px] text-gray-700 leading-tight truncate">{productName}</p>
       <svg ref={svgRef}></svg>
@@ -47,7 +55,7 @@ function PrintLabel({ shopName, productName, code, price }) {
           format: 'CODE128',
           width: 1.4,
           height: 30,
-          fontSize: 10,
+          fontSize: 16,
           margin: 2,
           displayValue: true,
         });
@@ -239,11 +247,13 @@ function BarcodePrint() {
           {selectedVariant ? (
             <div className="flex flex-wrap gap-3">
               <BarcodeLabel
-                shopName={SHOP_NAME}
-                productName={selectedProduct.name}
-                code={labelCode}
-                price={labelPrice}
-              />
+              shopName={SHOP_NAME}
+              productName={selectedProduct.name}
+              code={labelCode}
+              price={labelPrice}
+              labelWidth={labelWidth}
+              labelHeight={labelHeight}
+            />
               {quantity > 1 && (
                 <p className="text-sm text-gray-500 self-center">
                   …and {quantity - 1} more identical label{quantity - 1 > 1 ? 's' : ''} will print.
