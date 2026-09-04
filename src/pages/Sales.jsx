@@ -1,23 +1,30 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
-import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle } from 'react-icons/fa';
+import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes } from 'react-icons/fa';
 import productService from '../services/product.service';
 import saleService from '../services/sale.service';
 import useCartStore from '../store/cartStore';
 import Receipt from '../components/sales/Receipt';
 import offlineQueue from '../utils/offlineQueue';
 
+const PAYMENT_METHODS = ['cash', 'card', 'bank_transfer'];
+
 function Sales() {
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  // Single line ([{method, amount}]) covers the common case (amount is
+  // implicitly the full total). Split-tender adds more lines with editable
+  // amounts — see startSplit/addPaymentLine below.
+  const [payments, setPayments] = useState([{ method: 'cash', amount: '' }]);
   const [cashReceived, setCashReceived] = useState('');
   const [processing, setProcessing] = useState(false);
   const [completedSale, setCompletedSale] = useState(null);
+  const [showHeldList, setShowHeldList] = useState(false);
 
   const receiptRef = useRef();
+  const searchInputRef = useRef(null);
   // Stays the same across retries of one checkout attempt (network timeout, etc.)
   // so a resubmission is recognized server-side as a replay, not a new sale.
   // Only regenerated after a sale actually completes or the cart is cleared.
@@ -29,6 +36,7 @@ function Sales() {
     getItemDiscount, getItemLineTotal,
     getItemPromoDiscount, getItemBargainDiscount,
     clearCart, getSubtotal, getTotal, getTotalDiscount, getItemCount,
+    heldCarts, holdCart, resumeCart, discardHeldCart,
   } = useCartStore();
 
   const handlePrint = useReactToPrint({
@@ -91,14 +99,97 @@ function Sales() {
     toast.success(`${product.product_name} added.`);
   };
 
+  // ─── Split-tender payment helpers ─────────────────
+  const isSplit = payments.length > 1;
+  const total = getTotal();
+  const paymentsTotal = isSplit
+    ? payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+    : total;
+  const remaining = Math.round((total - paymentsTotal) * 100) / 100;
+  const cashLine = payments.find((p) => p.method === 'cash');
+  const cashDue = isSplit ? (Number(cashLine?.amount) || 0) : total;
+  const change = Number(cashReceived) - cashDue;
+
+  const setSinglePaymentMethod = (method) => setPayments([{ method, amount: '' }]);
+
+  const startSplit = () => {
+    const first = payments[0].method;
+    const second = PAYMENT_METHODS.find((m) => m !== first) || 'card';
+    setPayments([
+      { method: first, amount: total.toFixed(2) },
+      { method: second, amount: '0' },
+    ]);
+  };
+
+  const addPaymentLine = () => {
+    const used = new Set(payments.map((p) => p.method));
+    const nextMethod = PAYMENT_METHODS.find((m) => !used.has(m)) || PAYMENT_METHODS[0];
+    setPayments([...payments, { method: nextMethod, amount: remaining > 0 ? remaining.toFixed(2) : '0' }]);
+  };
+
+  const updatePaymentLine = (index, field, value) => {
+    setPayments(payments.map((p, i) => (i === index ? { ...p, [field]: value } : p)));
+  };
+
+  const removePaymentLine = (index) => {
+    if (payments.length <= 2) {
+      // Dropping back to one line — return to simple (non-split) mode.
+      const kept = payments.filter((_, i) => i !== index)[0];
+      setPayments([{ method: kept.method, amount: '' }]);
+      return;
+    }
+    setPayments(payments.filter((_, i) => i !== index));
+  };
+
+  const handleHold = () => {
+    if (items.length === 0) {
+      toast.error('Cart is empty — nothing to hold.');
+      return;
+    }
+    holdCart();
+    toast.success('Sale held. Resume it from "Held Sales".');
+    setSearchTerm('');
+    setResults([]);
+  };
+
+  const handleResumeHeld = (id) => {
+    if (items.length > 0 && !window.confirm('Resume this held sale? Your current cart will be replaced.')) {
+      return;
+    }
+    resumeCart(id);
+    setShowHeldList(false);
+    toast.success('Held sale resumed.');
+  };
+
+  // ─── Keyboard shortcuts: F2 search, F4 hold, F9 checkout ──
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'F4') {
+        e.preventDefault();
+        handleHold();
+      } else if (e.key === 'F9') {
+        e.preventDefault();
+        handleCheckout();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  });
+
   const handleCheckout = async () => {
     if (items.length === 0) {
       toast.error('Cart is empty.');
       return;
     }
-    const total = getTotal();
-    if (paymentMethod === 'cash' && Number(cashReceived) < total) {
-      toast.error('Cash received is less than total.');
+    if (isSplit && Math.abs(remaining) > 0.01) {
+      toast.error(`Payments must add up to the total. Remaining: Rs. ${remaining.toLocaleString()}`);
+      return;
+    }
+    if (cashLine && Number(cashReceived) < cashDue) {
+      toast.error('Cash received is less than the cash amount due.');
       return;
     }
     setProcessing(true);
@@ -118,7 +209,11 @@ function Sales() {
         discountType: i.discountValue ? i.discountType : null,
         discountValue: i.discountValue || 0,
       })),
-      payments: [{ method: paymentMethod, amount: total, reference: null }],
+      payments: payments.map((p) => ({
+        method: p.method,
+        amount: isSplit ? (Number(p.amount) || 0) : total,
+        reference: null,
+      })),
     };
 
     try {
@@ -126,13 +221,14 @@ function Sales() {
       const fullSale = await saleService.getById(res.data.id);
       const saleForReceipt = {
         ...fullSale.data,
-        cashReceived: paymentMethod === 'cash' ? Number(cashReceived) : null,
-        change: paymentMethod === 'cash' ? Number(cashReceived) - total : null,
+        cashReceived: cashLine ? Number(cashReceived) : null,
+        change: cashLine ? change : null,
       };
       setCompletedSale(saleForReceipt);
       toast.success('Sale completed!');
       clearCart();
       idempotencyKeyRef.current = crypto.randomUUID();
+      setPayments([{ method: 'cash', amount: '' }]);
       setCashReceived('');
       setSearchTerm('');
       setResults([]);
@@ -155,8 +251,6 @@ function Sales() {
 
   const subtotal = getSubtotal();
   const totalDiscount = getTotalDiscount();
-  const total = getTotal();
-  const change = Number(cashReceived) - total;
 
   // ─── SUCCESS / RECEIPT VIEW ───────────────────────
   if (completedSale) {
@@ -185,11 +279,51 @@ function Sales() {
     <div className="flex h-screen">
       {/* LEFT — product search */}
       <div className="flex-1 p-6 overflow-y-auto">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Sales (POS)</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+          <h2 className="text-2xl font-bold text-gray-800">Sales (POS)</h2>
+          <div className="relative flex items-center gap-2">
+            <button
+              onClick={handleHold}
+              title="Hold sale (F4)"
+              className="flex items-center gap-2 bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 text-sm"
+            >
+              <FaPause size={12} /> Hold
+            </button>
+            <button
+              onClick={() => setShowHeldList((s) => !s)}
+              className="flex items-center gap-2 bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 text-sm"
+            >
+              <FaLayerGroup size={12} /> Held Sales {heldCarts.length > 0 && `(${heldCarts.length})`}
+            </button>
+            {showHeldList && (
+              <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-20 p-2">
+                {heldCarts.length === 0 ? (
+                  <p className="text-sm text-gray-400 p-2">No held sales.</p>
+                ) : (
+                  heldCarts.map((h) => (
+                    <div key={h.id} className="flex items-center justify-between gap-2 p-2 hover:bg-gray-50 rounded text-sm">
+                      <button onClick={() => handleResumeHeld(h.id)} className="text-left flex-1">
+                        <p className="font-medium text-gray-800">{h.label}</p>
+                        <p className="text-xs text-gray-400">
+                          {h.items.length} item{h.items.length > 1 ? 's' : ''} · {new Date(h.heldAt).toLocaleTimeString()}
+                        </p>
+                      </button>
+                      <button onClick={() => discardHeldCart(h.id)} title="Discard" className="text-gray-400 hover:text-red-600">
+                        <FaTimes size={12} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 mb-3">F2 search · F4 hold · F9 checkout</p>
         <div className="flex gap-2 mb-4">
           <div className="relative flex-1">
             <FaSearch className="absolute left-3 top-3.5 text-gray-400" />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchTerm}
               onChange={handleSearch}
@@ -381,24 +515,63 @@ function Sales() {
             <span>Total</span>
             <span className="text-blue-600">Rs. {total.toLocaleString()}</span>
           </div>
-          <div className="flex gap-2 mb-3">
-            {['cash', 'card', 'bank_transfer'].map((method) => (
-              <button
-                key={method}
-                onClick={() => setPaymentMethod(method)}
-                className={`flex-1 py-2 text-xs rounded capitalize ${paymentMethod === method ? 'bg-yellow-500 text-black' : 'bg-gray-100 text-gray-700'}`}
-              >
-                {method.replace('_', ' ')}
+          {!isSplit ? (
+            <>
+              <div className="flex gap-2 mb-2">
+                {PAYMENT_METHODS.map((method) => (
+                  <button
+                    key={method}
+                    onClick={() => setSinglePaymentMethod(method)}
+                    className={`flex-1 py-2 text-xs rounded capitalize ${payments[0].method === method ? 'bg-yellow-500 text-black' : 'bg-gray-100 text-gray-700'}`}
+                  >
+                    {method.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+              <button onClick={startSplit} className="text-xs text-blue-600 hover:underline mb-3">
+                + Split payment
               </button>
-            ))}
-          </div>
-          {paymentMethod === 'cash' && (
+            </>
+          ) : (
+            <div className="mb-3 space-y-2">
+              {payments.map((p, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    value={p.method}
+                    onChange={(e) => updatePaymentLine(i, 'method', e.target.value)}
+                    className="px-2 py-1.5 border border-gray-300 rounded text-xs capitalize flex-1"
+                  >
+                    {PAYMENT_METHODS.map((m) => (
+                      <option key={m} value={m}>{m.replace('_', ' ')}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    value={p.amount}
+                    onChange={(e) => updatePaymentLine(i, 'amount', e.target.value)}
+                    placeholder="Amount"
+                    className="w-24 px-2 py-1.5 border border-gray-300 rounded text-xs"
+                  />
+                  <button onClick={() => removePaymentLine(i)} className="text-red-400 hover:text-red-600">
+                    <FaTimes size={12} />
+                  </button>
+                </div>
+              ))}
+              <button onClick={addPaymentLine} className="text-xs text-blue-600 hover:underline">
+                + Add another payment
+              </button>
+              <p className={`text-xs font-medium ${Math.abs(remaining) < 0.01 ? 'text-green-600' : 'text-red-600'}`}>
+                {Math.abs(remaining) < 0.01 ? 'Fully covered' : `Remaining: Rs. ${remaining.toLocaleString()}`}
+              </p>
+            </div>
+          )}
+          {cashLine && (
             <div className="mb-3">
               <input
                 type="number"
                 value={cashReceived}
                 onChange={(e) => setCashReceived(e.target.value)}
-                placeholder="Cash received"
+                placeholder={`Cash received${isSplit ? ` (Rs. ${cashDue.toLocaleString()} due)` : ''}`}
                 className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
               />
               {cashReceived && change >= 0 && (

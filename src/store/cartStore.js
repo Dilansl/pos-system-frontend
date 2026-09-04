@@ -1,7 +1,58 @@
 import { create } from 'zustand';
 
+const HELD_CARTS_KEY = 'heldCarts';
+
+function readHeldCarts() {
+  try {
+    return JSON.parse(localStorage.getItem(HELD_CARTS_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function writeHeldCarts(heldCarts) {
+  try {
+    localStorage.setItem(HELD_CARTS_KEY, JSON.stringify(heldCarts));
+  } catch {
+    // Storage full/unavailable — held carts just won't survive a reload.
+  }
+}
+
 const useCartStore = create((set, get) => ({
   items: [],  // each item also has: discountType ('percent'|'fixed'), discountValue (number), promoType, promoValue
+  // Parked carts — persisted so they survive a page refresh or nav away/back.
+  heldCarts: readHeldCarts(),
+
+  // Park the current cart (e.g. to serve another customer) and start a fresh one.
+  holdCart: (label) => {
+    const items = get().items;
+    if (items.length === 0) return;
+    const held = {
+      id: crypto.randomUUID(),
+      label: label?.trim() || `Hold ${get().heldCarts.length + 1}`,
+      items,
+      heldAt: new Date().toISOString(),
+    };
+    const heldCarts = [...get().heldCarts, held];
+    writeHeldCarts(heldCarts);
+    set({ heldCarts, items: [] });
+  },
+
+  // Bring a parked cart back as the active cart. Caller is responsible for
+  // confirming with the user if the active cart already has items.
+  resumeCart: (id) => {
+    const held = get().heldCarts.find((h) => h.id === id);
+    if (!held) return;
+    const heldCarts = get().heldCarts.filter((h) => h.id !== id);
+    writeHeldCarts(heldCarts);
+    set({ heldCarts, items: held.items });
+  },
+
+  discardHeldCart: (id) => {
+    const heldCarts = get().heldCarts.filter((h) => h.id !== id);
+    writeHeldCarts(heldCarts);
+    set({ heldCarts });
+  },
 
   // Add an item to the cart (or increase quantity if already there)
   addItem: (product) => {
