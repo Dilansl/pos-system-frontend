@@ -6,7 +6,8 @@ import {
 } from 'recharts';
 
 import reportService from '../services/report.service';
-import { FaMoneyBillWave, FaShoppingCart, FaChartLine, FaUndo, FaPercent } from 'react-icons/fa';
+import { FaMoneyBillWave, FaShoppingCart, FaChartLine, FaUndo, FaPercent, FaFileCsv } from 'react-icons/fa';
+import { exportToCsv } from '../utils/csvExport';
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 function Reports() {
@@ -60,6 +61,18 @@ function Reports() {
     loadReports();
   }, []);
 
+  const handleExport = () => {
+    if (byDay.length === 0) {
+      toast.error('Nothing to export.');
+      return;
+    }
+    exportToCsv(`sales-report_${startDate}_to_${endDate}.csv`, byDay.map((d) => ({
+      Date: d.date,
+      Revenue: d.revenue,
+      Transactions: d.transactions,
+    })));
+  };
+
   const stats = summary ? [
     { label: 'Total Revenue', value: `Rs. ${Number(summary.total_revenue).toLocaleString()}`, icon: <FaMoneyBillWave />, color: 'bg-green-500' },
     { label: 'Total Profit', value: `Rs. ${Number(summary.total_profit).toLocaleString()}`, icon: <FaChartLine />, color: 'bg-emerald-600' },
@@ -85,6 +98,12 @@ function Reports() {
         </div>
         <button onClick={loadReports} className="bg-yellow-500 text-black px-5 py-2 rounded text-sm hover:bg-yellow-600">
           Apply
+        </button>
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-200"
+        >
+          <FaFileCsv /> Export CSV
         </button>
       </div>
 

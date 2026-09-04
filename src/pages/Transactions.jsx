@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaReceipt, FaUndo, FaTimes } from 'react-icons/fa';
+import { FaReceipt, FaUndo, FaTimes, FaFileCsv } from 'react-icons/fa';
 import saleService from '../services/sale.service';
 import returnService from '../services/return.service';
 import Modal from '../components/common/Modal';
+import { exportToCsv } from '../utils/csvExport';
 
 function Transactions() {
   const [tab, setTab] = useState('sales'); // 'sales' | 'refunds'
@@ -65,6 +66,31 @@ function Transactions() {
 
   const rfNumber = (seq) => (seq ? `RF-${String(seq).padStart(4, '0')}` : '—');
 
+  const handleExport = () => {
+    const rows = tab === 'sales'
+      ? sales.map((s) => ({
+          Receipt: rfNumber(s.receipt_seq),
+          Date: new Date(s.created_at).toLocaleString(),
+          Cashier: s.cashier_name || '',
+          Total: Number(s.total),
+          Status: s.status,
+        }))
+      : refunds.map((r) => ({
+          Receipt: rfNumber(r.receipt_seq),
+          Date: new Date(r.created_at).toLocaleString(),
+          'Processed By': r.staff_name || '',
+          Method: r.refund_method || '',
+          Refund: Number(r.refund_amount),
+        }));
+
+    if (rows.length === 0) {
+      toast.error('Nothing to export.');
+      return;
+    }
+    const range = startDate || endDate ? `_${startDate || 'start'}_to_${endDate || 'now'}` : '';
+    exportToCsv(`${tab}${range}.csv`, rows);
+  };
+
   const statusBadge = (status) => {
     const map = {
       completed: 'bg-green-100 text-green-700',
@@ -120,18 +146,26 @@ function Transactions() {
         )}
       </div>
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setTab('sales')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${tab === 'sales' ? 'bg-yellow-500 text-black' : 'bg-white text-gray-600 border border-gray-200'}`}
+          >
+            <FaReceipt /> Sales ({sales.length})
+          </button>
+          <button
+            onClick={() => setTab('refunds')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${tab === 'refunds' ? 'bg-yellow-500 text-black' : 'bg-white text-gray-600 border border-gray-200'}`}
+          >
+            <FaUndo /> Refunds ({refunds.length})
+          </button>
+        </div>
         <button
-          onClick={() => setTab('sales')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${tab === 'sales' ? 'bg-yellow-500 text-black' : 'bg-white text-gray-600 border border-gray-200'}`}
+          onClick={handleExport}
+          className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 text-sm"
         >
-          <FaReceipt /> Sales ({sales.length})
-        </button>
-        <button
-          onClick={() => setTab('refunds')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${tab === 'refunds' ? 'bg-yellow-500 text-black' : 'bg-white text-gray-600 border border-gray-200'}`}
-        >
-          <FaUndo /> Refunds ({refunds.length})
+          <FaFileCsv /> Export CSV
         </button>
       </div>
 
