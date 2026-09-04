@@ -13,7 +13,7 @@ const Receipt = forwardRef(({ sale }, ref) => {
         <p className="text-xs">Tel: 0706201176</p>
       </div>
 
-      <div className="border-t border-b border-dashed border-gray-400 py-2 mb-2 text-xs">
+      <div className="border-t border-b border-dashed border-slate-400 py-2 mb-2 text-xs">
         <div className="flex justify-between">
           <span>Receipt:</span>
           <span>{sale.receipt_seq ? `RF-${String(sale.receipt_seq).padStart(4, '0')}` : `#${sale.id?.slice(0, 8)}`}</span>
@@ -31,7 +31,7 @@ const Receipt = forwardRef(({ sale }, ref) => {
       {/* Items */}
       <table className="w-full text-xs mb-2">
         <thead>
-          <tr className="border-b border-dashed border-gray-400">
+          <tr className="border-b border-dashed border-slate-400">
             <th className="text-left py-1">Item</th>
             <th className="text-center py-1">Qty</th>
             <th className="text-right py-1">Total</th>
@@ -43,7 +43,7 @@ const Receipt = forwardRef(({ sale }, ref) => {
               <td className="py-1">
                 {item.product_name}
                 <br />
-                <span className="text-gray-500">{item.size}·{item.color}</span>
+                <span className="text-slate-500">{item.size}·{item.color}</span>
               </td>
               <td className="text-center py-1">{item.quantity}</td>
               <td className="text-right py-1">{Number(item.line_total).toLocaleString()}</td>
@@ -53,7 +53,7 @@ const Receipt = forwardRef(({ sale }, ref) => {
       </table>
 
       {/* Totals */}
-      <div className="border-t border-dashed border-gray-400 pt-2 text-xs">
+      <div className="border-t border-dashed border-slate-400 pt-2 text-xs">
         <div className="flex justify-between">
           <span>Subtotal:</span>
           <span>Rs. {Number(sale.subtotal).toLocaleString()}</span>
@@ -71,7 +71,7 @@ const Receipt = forwardRef(({ sale }, ref) => {
       </div>
 
       {/* Payment */}
-      <div className="border-t border-dashed border-gray-400 pt-2 mt-2 text-xs">
+      <div className="border-t border-dashed border-slate-400 pt-2 mt-2 text-xs">
         {sale.payments?.map((p) => (
           <div key={p.id} className="flex justify-between">
             <span className="capitalize">{p.method?.replace('_', ' ')}:</span>
@@ -95,7 +95,7 @@ const Receipt = forwardRef(({ sale }, ref) => {
 
       <div className="text-center mt-4 text-xs">
         <p>Thank you for shopping!</p>
-        <p className="text-gray-500">Please keep this receipt</p>
+        <p className="text-slate-500">Please keep this receipt</p>
       </div>
     </div>
   );

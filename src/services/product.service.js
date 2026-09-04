@@ -1,8 +1,12 @@
 import api from './api';
 
 const productService = {
-  getAll: async () => {
-    const response = await api.get('/products');
+  getAll: async ({ page = 1, limit = 10, search = '' } = {}) => {
+    const params = new URLSearchParams();
+    params.set('page', page);
+    params.set('limit', limit);
+    if (search) params.set('search', search);
+    const response = await api.get(`/products?${params.toString()}`);
     return response.data;
   },
 

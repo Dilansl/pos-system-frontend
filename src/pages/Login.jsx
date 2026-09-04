@@ -57,7 +57,7 @@ function Login() {
 
       <div className="relative w-full max-w-sm">
         {/* Card */}
-        <div className="bg-gradient-to-b from-gray-900 to-black border border-yellow-600/20 rounded-2xl shadow-2xl shadow-yellow-900/10 p-8 backdrop-blur-sm">
+        <div className="bg-gradient-to-b from-slate-900 to-black border border-yellow-600/20 rounded-2xl shadow-2xl shadow-yellow-900/10 p-8 backdrop-blur-sm">
           {/* Logo */}
           <div className="flex justify-center mb-5">
             <div className="relative">
@@ -73,7 +73,7 @@ function Login() {
           <h1 className="text-2xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-yellow-500 to-yellow-300 tracking-wide">
             ROPYCO FASHION
           </h1>
-          <p className="text-center text-gray-500 mb-8 text-xs tracking-widest uppercase mt-1">
+          <p className="text-center text-slate-500 mb-8 text-xs tracking-widest uppercase mt-1">
             Wear Your Identity
           </p>
 
@@ -85,17 +85,17 @@ function Login() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5 tracking-wide uppercase">
+              <label className="block text-xs font-medium text-slate-400 mb-1.5 tracking-wide uppercase">
                 Username
               </label>
               <div className="relative">
-                <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  className="w-full bg-gray-900/60 border border-gray-700 text-gray-100 placeholder-gray-600 pl-10 pr-3 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition"
+                  className="w-full bg-slate-900/60 border border-slate-700 text-slate-100 placeholder-slate-600 pl-10 pr-3 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition"
                   placeholder="admin"
                   autoComplete="username"
                 />
@@ -103,24 +103,24 @@ function Login() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5 tracking-wide uppercase">
+              <label className="block text-xs font-medium text-slate-400 mb-1.5 tracking-wide uppercase">
                 Password
               </label>
               <div className="relative">
-                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  className="w-full bg-gray-900/60 border border-gray-700 text-gray-100 placeholder-gray-600 pl-10 pr-10 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition"
+                  className="w-full bg-slate-900/60 border border-slate-700 text-slate-100 placeholder-slate-600 pl-10 pr-10 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition"
                   placeholder="••••••••"
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition"
                   tabIndex={-1}
                 >
                   {showPassword ? <FiEyeOff size={16} /> : <FiEye size={16} />}
@@ -138,7 +138,7 @@ function Login() {
           </div>
         </div>
 
-        <p className="text-center text-gray-600 text-xs mt-6 tracking-wide">
+        <p className="text-center text-slate-600 text-xs mt-6 tracking-wide">
           © {new Date().getFullYear()} ROPYCO Fashion · Nittambuwa
         </p>
       </div>
