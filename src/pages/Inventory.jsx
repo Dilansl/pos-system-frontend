@@ -1,17 +1,48 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaExclamationTriangle, FaPlus, FaMinus, FaHistory } from 'react-icons/fa';
+import { FaExclamationTriangle, FaPlus, FaMinus, FaHistory, FaSearch } from 'react-icons/fa';
 import inventoryService from '../services/inventory.service';
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
 function Inventory() {
   const [stock, setStock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adjustItem, setAdjustItem] = useState(null);
+  const [lowStockCount, setLowStockCount] = useState(0);
+
+  // ── Server-side pagination + search state ──
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Debounce: wait 350ms after the user stops typing before searching
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Reset to page 1 whenever the search term or page size changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, pageSize]);
 
   const loadStock = async () => {
+    setLoading(true);
     try {
-      const res = await inventoryService.getAll();
+      const res = await inventoryService.getAll({
+        page: currentPage,
+        limit: pageSize,
+        search: debouncedSearch,
+      });
       setStock(res.data);
+      setTotalPages(res.totalPages);
+      setTotalCount(res.total);
     } catch (err) {
       toast.error('Failed to load inventory.');
     } finally {
@@ -19,11 +50,30 @@ function Inventory() {
     }
   };
 
+  // Re-fetch whenever page, page size, or the debounced search term changes
   useEffect(() => {
     loadStock();
+  }, [currentPage, pageSize, debouncedSearch]);
+
+  // Low-stock badge counts the WHOLE inventory, independent of pagination —
+  // fetched separately so paging the table doesn't change the count.
+  const loadLowStockCount = async () => {
+    try {
+      const res = await inventoryService.getLowStock();
+      setLowStockCount(res.data.length);
+    } catch (err) {
+      // Non-critical — just skip the badge if this fails.
+    }
+  };
+
+  useEffect(() => {
+    loadLowStockCount();
   }, []);
 
-  const lowStockCount = stock.filter((s) => s.is_low_stock).length;
+  const refreshAll = () => {
+    loadStock();
+    loadLowStockCount();
+  };
 
   return (
     <div className="p-6">
@@ -36,11 +86,40 @@ function Inventory() {
         )}
       </div>
 
+      {/* Search + page size */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div className="relative w-full sm:w-72">
+          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search by product, category, or barcode..."
+            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <span>Show</span>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+          <span>per page</span>
+        </div>
+      </div>
+
       {loading ? (
         <p className="text-gray-500">Loading...</p>
       ) : stock.length === 0 ? (
         <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-          <p className="text-gray-500">No stock records yet. Add products first.</p>
+          <p className="text-gray-500">
+            {debouncedSearch ? 'No stock records match your search.' : 'No stock records yet. Add products first.'}
+          </p>
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -88,11 +167,37 @@ function Inventory() {
         </div>
       )}
 
+      {/* Pagination footer */}
+      {!loading && totalCount > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-4 text-sm text-gray-600">
+          <span>
+            Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount} items
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              disabled={currentPage <= 1}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Prev
+            </button>
+            <span className="text-gray-500">Page {currentPage} of {totalPages}</span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
       {adjustItem && (
         <AdjustModal
           item={adjustItem}
           onClose={() => setAdjustItem(null)}
-          onSuccess={() => { setAdjustItem(null); loadStock(); }}
+          onSuccess={() => { setAdjustItem(null); refreshAll(); }}
         />
       )}
     </div>
