@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { FaPlus, FaBoxOpen, FaTag, FaEdit, FaTrash, FaLayerGroup, FaSearch } from 'react-icons/fa';
 import productService from '../services/product.service';
+import Modal from '../components/common/Modal';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
@@ -21,6 +22,9 @@ function Products() {
   const [debouncedSearch, setDebouncedSearch] = useState(''); // what actually gets sent to the API
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  // Guards against a slower earlier request resolving after a newer one and
+  // clobbering the UI with stale results (variable network latency, fast typing).
+  const requestIdRef = useRef(0);
 
   // Debounce: wait 350ms after the user stops typing before searching
   useEffect(() => {
@@ -36,6 +40,7 @@ function Products() {
   }, [debouncedSearch, pageSize]);
 
   const loadProducts = async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
       const res = await productService.getAll({
@@ -43,13 +48,15 @@ function Products() {
         limit: pageSize,
         search: debouncedSearch,
       });
+      if (requestId !== requestIdRef.current) return; // a newer request already landed
       setProducts(res.data);
       setTotalPages(res.totalPages);
       setTotalCount(res.total);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       toast.error('Failed to load products.');
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   };
 
@@ -278,30 +285,27 @@ function CategoryModal({ onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">Add Category</h3>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Category name"
-          className="w-full px-3 py-2 border border-gray-300 rounded mb-3"
-        />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Description (optional)"
-          className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
-          rows={2}
-        />
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
+    <Modal onClose={onClose} title="Add Category">
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Category name"
+        className="w-full px-3 py-2 border border-gray-300 rounded mb-3"
+      />
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Description (optional)"
+        className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
+        rows={2}
+      />
+      <div className="flex gap-2 justify-end">
+        <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+        <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+          {saving ? 'Saving...' : 'Save'}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -388,10 +392,7 @@ function ProductModal({ product, categories, onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">{isEdit ? 'Edit Product' : 'Add Product'}</h3>
-
+    <Modal onClose={onClose} title={isEdit ? 'Edit Product' : 'Add Product'} maxWidth="max-w-2xl" scrollable>
         <div className="grid grid-cols-2 gap-3 mb-3">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" className="px-3 py-2 border border-gray-300 rounded" />
           <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="px-3 py-2 border border-gray-300 rounded">
@@ -479,8 +480,7 @@ function ProductModal({ product, categories, onClose, onSuccess }) {
             {saving ? 'Saving...' : isEdit ? 'Update' : 'Create Product'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -515,11 +515,10 @@ function ManageBatchesModal({ product, onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+    <Modal onClose={onClose} titleId="manage-batches-title" maxWidth="max-w-3xl" scrollable>
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h3 className="text-lg font-bold text-gray-800">Manage Batches</h3>
+            <h3 id="manage-batches-title" className="text-lg font-bold text-gray-800">Manage Batches</h3>
             <p className="text-sm text-gray-500">{product.name}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -596,8 +595,7 @@ function ManageBatchesModal({ product, onClose, onSuccess }) {
             onSaved={handleSaved}
           />
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

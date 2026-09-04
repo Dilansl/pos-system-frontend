@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { FaExclamationTriangle, FaPlus, FaMinus, FaHistory, FaSearch } from 'react-icons/fa';
 import inventoryService from '../services/inventory.service';
+import Modal from '../components/common/Modal';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
@@ -18,6 +19,9 @@ function Inventory() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  // Guards against a slower earlier request resolving after a newer one and
+  // clobbering the UI with stale results (variable network latency, fast typing).
+  const requestIdRef = useRef(0);
 
   // Debounce: wait 350ms after the user stops typing before searching
   useEffect(() => {
@@ -33,6 +37,7 @@ function Inventory() {
   }, [debouncedSearch, pageSize]);
 
   const loadStock = async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
       const res = await inventoryService.getAll({
@@ -40,13 +45,15 @@ function Inventory() {
         limit: pageSize,
         search: debouncedSearch,
       });
+      if (requestId !== requestIdRef.current) return;
       setStock(res.data);
       setTotalPages(res.totalPages);
       setTotalCount(res.total);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       toast.error('Failed to load inventory.');
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   };
 
@@ -239,55 +246,52 @@ function AdjustModal({ item, onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 className="text-lg font-bold text-gray-800 mb-1">Adjust Stock</h3>
-        <p className="text-sm text-gray-500 mb-4">
-          {item.product_name} · {item.size} · {item.color}
-        </p>
-        <p className="text-sm text-gray-600 mb-4">
-          Current stock: <span className="font-bold">{item.quantity}</span>
-        </p>
+    <Modal onClose={onClose} title="Adjust Stock">
+      <p className="text-sm text-gray-500 mb-4">
+        {item.product_name} · {item.size} · {item.color}
+      </p>
+      <p className="text-sm text-gray-600 mb-4">
+        Current stock: <span className="font-bold">{item.quantity}</span>
+      </p>
 
-        {/* Add / Remove toggle */}
-        <div className="flex gap-2 mb-3">
-          <button
-            onClick={() => setMode('add')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-sm ${mode === 'add' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-          >
-            <FaPlus size={12} /> Add Stock
-          </button>
-          <button
-            onClick={() => setMode('remove')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-sm ${mode === 'remove' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-          >
-            <FaMinus size={12} /> Remove Stock
-          </button>
-        </div>
-
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="Quantity"
-          className="w-full px-3 py-2 border border-gray-300 rounded mb-3"
-        />
-
-        <input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Note (optional) — e.g. new delivery"
-          className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
-        />
-
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Saving...' : 'Update Stock'}
-          </button>
-        </div>
+      {/* Add / Remove toggle */}
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={() => setMode('add')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-sm ${mode === 'add' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+        >
+          <FaPlus size={12} /> Add Stock
+        </button>
+        <button
+          onClick={() => setMode('remove')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-sm ${mode === 'remove' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+        >
+          <FaMinus size={12} /> Remove Stock
+        </button>
       </div>
-    </div>
+
+      <input
+        type="number"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="Quantity"
+        className="w-full px-3 py-2 border border-gray-300 rounded mb-3"
+      />
+
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Note (optional) — e.g. new delivery"
+        className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
+      />
+
+      <div className="flex gap-2 justify-end">
+        <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+        <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+          {saving ? 'Saving...' : 'Update Stock'}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

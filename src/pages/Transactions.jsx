@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { FaReceipt, FaUndo, FaTimes } from 'react-icons/fa';
 import saleService from '../services/sale.service';
 import returnService from '../services/return.service';
+import Modal from '../components/common/Modal';
 
 function Transactions() {
   const [tab, setTab] = useState('sales'); // 'sales' | 'refunds'
@@ -224,15 +225,14 @@ function Transactions() {
 
       {/* Sale detail modal */}
       {(detail || detailLoading) && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <Modal onClose={() => setDetail(null)} titleId="sale-detail-title" maxWidth="max-w-lg" scrollable>
             {detailLoading ? (
               <p className="text-gray-500">Loading...</p>
             ) : detail && (
               <>
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-lg font-bold text-gray-800">{rfNumber(detail.receipt_seq)}</h3>
+                    <h3 id="sale-detail-title" className="text-lg font-bold text-gray-800">{rfNumber(detail.receipt_seq)}</h3>
                     <p className="text-xs text-gray-500">
                       {new Date(detail.created_at).toLocaleString()} · Cashier: {detail.cashier_name}
                     </p>
@@ -295,8 +295,7 @@ function Transactions() {
                 </div>
               </>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { FaPlus, FaUserFriends, FaStar, FaPhone, FaEnvelope, FaArrowLeft } from 'react-icons/fa';
 import customerService from '../services/customer.service';
+import Modal from '../components/common/Modal';
 
 function Customers() {
   const [customers, setCustomers] = useState([]);
@@ -206,20 +207,17 @@ function CustomerModal({ onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">Add Customer</h3>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className="w-full px-3 py-2 border border-gray-300 rounded mb-3" />
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" className="w-full px-3 py-2 border border-gray-300 rounded mb-3" />
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" className="w-full px-3 py-2 border border-gray-300 rounded mb-4" />
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
+    <Modal onClose={onClose} title="Add Customer">
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className="w-full px-3 py-2 border border-gray-300 rounded mb-3" />
+      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" className="w-full px-3 py-2 border border-gray-300 rounded mb-3" />
+      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" className="w-full px-3 py-2 border border-gray-300 rounded mb-4" />
+      <div className="flex gap-2 justify-end">
+        <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+        <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+          {saving ? 'Saving...' : 'Save'}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { FaPlus, FaUserShield, FaKey, FaUserSlash, FaUserCheck, FaEdit } from 'react-icons/fa';
 import staffService from '../services/staff.service';
+import Modal from '../components/common/Modal';
 
 function Staff() {
   const [staff, setStaff] = useState([]);
@@ -26,6 +27,9 @@ function Staff() {
   }, []);
 
   const handleToggleActive = async (member) => {
+    if (member.is_active && !window.confirm(`Deactivate ${member.name}? They'll be signed out immediately and won't be able to log in until reactivated.`)) {
+      return;
+    }
     try {
       await staffService.setActive(member.id, !member.is_active);
       toast.success(member.is_active ? 'Staff deactivated.' : 'Staff activated.');
@@ -161,13 +165,12 @@ function StaffModal({ staff, onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <FaUserShield /> {isEdit ? 'Edit Staff' : 'Add Staff'}
-        </h3>
+    <Modal onClose={onClose} titleId="staff-modal-title">
+      <h3 id="staff-modal-title" className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+        <FaUserShield /> {isEdit ? 'Edit Staff' : 'Add Staff'}
+      </h3>
 
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className="w-full px-3 py-2 border border-gray-300 rounded mb-3" />
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className="w-full px-3 py-2 border border-gray-300 rounded mb-3" />
 
         <input
           value={username}
@@ -199,8 +202,7 @@ function StaffModal({ staff, onClose, onSuccess }) {
             {saving ? 'Saving...' : isEdit ? 'Update' : 'Create'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -227,27 +229,25 @@ function PasswordModal({ staff, onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">
-          <FaKey /> Reset Password
-        </h3>
-        <p className="text-sm text-gray-500 mb-4">For {staff.name} ({staff.username})</p>
-        <input
-          type="password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="New password (min 6 characters)"
-          className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
-        />
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Saving...' : 'Reset'}
-          </button>
-        </div>
+    <Modal onClose={onClose} titleId="password-modal-title">
+      <h3 id="password-modal-title" className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">
+        <FaKey /> Reset Password
+      </h3>
+      <p className="text-sm text-gray-500 mb-4">For {staff.name} ({staff.username})</p>
+      <input
+        type="password"
+        value={newPassword}
+        onChange={(e) => setNewPassword(e.target.value)}
+        placeholder="New password (min 6 characters)"
+        className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
+      />
+      <div className="flex gap-2 justify-end">
+        <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+        <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+          {saving ? 'Saving...' : 'Reset'}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
