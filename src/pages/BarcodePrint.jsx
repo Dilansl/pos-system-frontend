@@ -33,13 +33,13 @@ function BarcodeLabel({ shopName, productName, code, price, labelWidth, labelHei
 
   return (
     <div
-      className="border border-gray-300 rounded p-2 text-center bg-white flex flex-col justify-center overflow-hidden"
+      className="border border-slate-300 rounded p-2 text-center bg-white flex flex-col justify-center overflow-hidden"
       style={{ width: `${previewWidth}px`, height: `${previewHeight}px` }}
     >
-      <p className="text-[11px] font-bold text-gray-800 leading-tight">{shopName}</p>
-      <p className="text-[11px] text-gray-700 leading-tight truncate">{productName}</p>
+      <p className="text-[11px] font-bold text-slate-800 leading-tight">{shopName}</p>
+      <p className="text-[11px] text-slate-700 leading-tight truncate">{productName}</p>
       <svg ref={svgRef}></svg>
-      <p className="text-sm font-bold text-gray-900">Rs. {Number(price).toLocaleString()}</p>
+      <p className="text-sm font-bold text-slate-900">Rs. {Number(price).toLocaleString()}</p>
     </div>
   );
 }
@@ -133,33 +133,33 @@ function BarcodePrint() {
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+      <h2 className="text-2xl font-bold text-slate-800 mb-4 flex items-center gap-2">
         <FaBarcode /> Barcode Printing
       </h2>
 
       <div className="grid grid-cols-3 gap-4">
         {/* LEFT — product + batch selection */}
-        <div className="col-span-1 bg-white rounded-lg shadow-sm p-4">
-          <h3 className="font-medium text-gray-700 mb-2">1. Select Product</h3>
+        <div className="col-span-1 bg-white rounded-xl shadow-sm border border-slate-200/60 p-4">
+          <h3 className="font-medium text-slate-700 mb-2">1. Select Product</h3>
           <div className="relative mb-3">
-            <FaSearch className="absolute left-3 top-3 text-gray-400 text-sm" />
+            <FaSearch className="absolute left-3 top-3 text-slate-400 text-sm" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search products..."
-              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded text-sm"
+              className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded text-sm"
             />
           </div>
 
           {loading ? (
-            <p className="text-gray-500 text-sm">Loading...</p>
+            <p className="text-slate-500 text-sm">Loading...</p>
           ) : (
             <div className="max-h-60 overflow-y-auto space-y-1 mb-4">
               {filtered.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => selectProduct(p)}
-                  className={`w-full text-left px-3 py-2 rounded text-sm ${selectedProduct?.id === p.id ? 'bg-yellow-500 text-black' : 'hover:bg-gray-100 text-gray-700'}`}
+                  className={`w-full text-left px-3 py-2 rounded text-sm ${selectedProduct?.id === p.id ? 'bg-yellow-500 text-black' : 'hover:bg-slate-50 text-slate-700 border border-slate-200'}`}
                 >
                   {p.name}
                 </button>
@@ -170,17 +170,17 @@ function BarcodePrint() {
           {/* Batch selection */}
           {selectedProduct && (
             <>
-              <h3 className="font-medium text-gray-700 mb-2">2. Select Batch</h3>
+              <h3 className="font-medium text-slate-700 mb-2">2. Select Batch</h3>
               <div className="space-y-1 mb-4">
                 {variants.length === 0 ? (
-                  <p className="text-gray-400 text-sm">No batches.</p>
+                  <p className="text-slate-400 text-sm">No batches.</p>
                 ) : (
                   variants.map((v) => (
                     <button
                       key={v.id}
                       onClick={() => setSelectedVariant(v)}
                       disabled={!v.barcode}
-                      className={`w-full text-left px-3 py-2 rounded text-sm ${selectedVariant?.id === v.id ? 'bg-yellow-500 text-black' : 'hover:bg-gray-100 text-gray-700'} ${!v.barcode ? 'opacity-40 cursor-not-allowed' : ''}`}
+                      className={`w-full text-left px-3 py-2 rounded text-sm ${selectedVariant?.id === v.id ? 'bg-yellow-500 text-black' : 'hover:bg-slate-50 text-slate-700 border border-slate-200'} ${!v.barcode ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
                       {v.barcode || '(no code)'} · {v.size || '—'}/{v.color || '—'} · Rs. {Number(v.price_override || selectedProduct.base_price).toLocaleString()}
                     </button>
@@ -193,43 +193,43 @@ function BarcodePrint() {
           {/* Label size */}
           {selectedVariant && (
             <>
-              <h3 className="font-medium text-gray-700 mb-2">3. Label Size (mm)</h3>
+              <h3 className="font-medium text-slate-700 mb-2">3. Label Size (mm)</h3>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Width</label>
+                  <label className="block text-xs text-slate-500 mb-1">Width</label>
                   <input
                     type="number"
                     min="10"
                     value={labelWidth}
                     onChange={(e) => setLabelWidth(Math.max(10, Number(e.target.value)))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Height</label>
+                  <label className="block text-xs text-slate-500 mb-1">Height</label>
                   <input
                     type="number"
                     min="10"
                     value={labelHeight}
                     onChange={(e) => setLabelHeight(Math.max(10, Number(e.target.value)))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
                   />
                 </div>
               </div>
               <div className="flex gap-1 mb-4">
-                <button onClick={() => { setLabelWidth(50); setLabelHeight(30); }} className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">50×30</button>
-                <button onClick={() => { setLabelWidth(40); setLabelHeight(30); }} className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">40×30</button>
-                <button onClick={() => { setLabelWidth(38); setLabelHeight(25); }} className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">38×25</button>
-                <button onClick={() => { setLabelWidth(70); setLabelHeight(40); }} className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">70×40</button>
+                <button onClick={() => { setLabelWidth(50); setLabelHeight(30); }} className="text-xs px-2 py-1 bg-slate-100 rounded hover:bg-slate-200">50×30</button>
+                <button onClick={() => { setLabelWidth(40); setLabelHeight(30); }} className="text-xs px-2 py-1 bg-slate-100 rounded hover:bg-slate-200">40×30</button>
+                <button onClick={() => { setLabelWidth(38); setLabelHeight(25); }} className="text-xs px-2 py-1 bg-slate-100 rounded hover:bg-slate-200">38×25</button>
+                <button onClick={() => { setLabelWidth(70); setLabelHeight(40); }} className="text-xs px-2 py-1 bg-slate-100 rounded hover:bg-slate-200">70×40</button>
               </div>
 
-              <h3 className="font-medium text-gray-700 mb-2">4. Quantity</h3>
+              <h3 className="font-medium text-slate-700 mb-2">4. Quantity</h3>
               <input
                 type="number"
                 min="1"
                 value={quantity}
                 onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
-                className="w-full px-3 py-2 border border-gray-300 rounded text-sm mb-4"
+                className="w-full px-3 py-2 border border-slate-300 rounded text-sm mb-4"
               />
               <button
                 onClick={handlePrint}
@@ -242,8 +242,8 @@ function BarcodePrint() {
         </div>
 
         {/* RIGHT — live preview */}
-        <div className="col-span-2 bg-white rounded-lg shadow-sm p-4">
-          <h3 className="font-medium text-gray-700 mb-3">Preview ({labelWidth}×{labelHeight}mm)</h3>
+        <div className="col-span-2 bg-white rounded-xl shadow-sm border border-slate-200/60 p-4">
+          <h3 className="font-medium text-slate-700 mb-3">Preview ({labelWidth}×{labelHeight}mm)</h3>
           {selectedVariant ? (
             <div className="flex flex-wrap gap-3">
               <BarcodeLabel
@@ -255,13 +255,13 @@ function BarcodePrint() {
               labelHeight={labelHeight}
             />
               {quantity > 1 && (
-                <p className="text-sm text-gray-500 self-center">
+                <p className="text-sm text-slate-500 self-center">
                   …and {quantity - 1} more identical label{quantity - 1 > 1 ? 's' : ''} will print.
                 </p>
               )}
             </div>
           ) : (
-            <p className="text-gray-400 text-sm">Select a product and batch to preview the label.</p>
+            <p className="text-slate-400 text-sm">Select a product and batch to preview the label.</p>
           )}
         </div>
       </div>

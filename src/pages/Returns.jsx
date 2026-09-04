@@ -94,11 +94,11 @@ function Returns() {
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">Returns & Refunds</h2>
+      <h2 className="text-2xl font-bold text-slate-800 mb-4">Returns & Refunds</h2>
 
       {/* Sale lookup */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-4 mb-6">
+        <label className="block text-sm font-medium text-slate-700 mb-2">
           Enter Receipt Number to process a return
         </label>
         <div className="flex gap-2">
@@ -106,7 +106,7 @@ function Returns() {
             value={saleId}
             onChange={(e) => setSaleId(e.target.value)}
             placeholder="e.g. RF-0006 or 6"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+            className="flex-1 px-3 py-2 border border-slate-300 rounded text-sm"
           />
           <button
             onClick={handleLookup}
@@ -116,27 +116,27 @@ function Returns() {
             <FaSearch /> {loading ? 'Looking up...' : 'Look Up'}
           </button>
         </div>
-        <p className="text-xs text-gray-400 mt-2">
+        <p className="text-xs text-slate-400 mt-2">
           Tip: the receipt number is printed on the customer's receipt (e.g. RF-0006).
         </p>
       </div>
 
       {/* Sale details + return form */}
       {sale && (
-        <div className="bg-white rounded-lg shadow-sm p-5">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <h3 className="font-bold text-gray-800">
+              <h3 className="font-bold text-slate-800">
                 {sale.receipt_seq ? `RF-${String(sale.receipt_seq).padStart(4, '0')}` : `Sale #${sale.id.slice(0, 8)}`}
               </h3>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-slate-500">
                 {new Date(sale.created_at).toLocaleString()} · Cashier: {sale.cashier_name}
               </p>
             </div>
             <span className={`px-2 py-1 rounded text-xs ${
-              sale.status === 'refunded' ? 'bg-red-100 text-red-700'
-              : sale.status === 'partially_refunded' ? 'bg-amber-100 text-amber-700'
-              : 'bg-green-100 text-green-700'
+              sale.status === 'refunded' ? 'bg-red-50 text-red-700 border border-red-200'
+              : sale.status === 'partially_refunded' ? 'bg-amber-50 text-amber-700 border border-amber-200'
+              : 'bg-green-50 text-green-700 border border-green-200'
             }`}>
               {sale.status.replace('_', ' ')}
             </span>
@@ -144,13 +144,13 @@ function Returns() {
 
           {/* Items table */}
           <table className="w-full text-sm mb-4">
-            <thead className="bg-gray-50 text-gray-600">
+            <thead className="bg-slate-50/80 text-slate-500">
               <tr>
-                <th className="text-left px-3 py-2 font-medium">Item</th>
-                <th className="text-center px-3 py-2 font-medium">Sold Qty</th>
-                <th className="text-center px-3 py-2 font-medium">Returned</th>
-                <th className="text-center px-3 py-2 font-medium">Unit Price</th>
-                <th className="text-center px-3 py-2 font-medium">Return Qty</th>
+                <th className="text-left px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Item</th>
+                <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Sold Qty</th>
+                <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Returned</th>
+                <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Unit Price</th>
+                <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Return Qty</th>
               </tr>
             </thead>
             <tbody>
@@ -158,23 +158,23 @@ function Returns() {
                 const remaining = remainingQty(item);
                 const fullyReturned = remaining <= 0;
                 return (
-                  <tr key={item.id} className="border-t border-gray-100">
+                  <tr key={item.id} className="border-t border-slate-100">
                     <td className="px-3 py-2">
-                      <p className="font-medium text-gray-800">{item.product_name}</p>
-                      <p className="text-xs text-gray-500">{item.size} · {item.color}</p>
+                      <p className="font-medium text-slate-800">{item.product_name}</p>
+                      <p className="text-xs text-slate-500">{item.size} · {item.color}</p>
                     </td>
                     <td className="text-center px-3 py-2">{item.quantity}</td>
                     <td className="text-center px-3 py-2">
                       {item.already_returned > 0 ? (
                         <span className="text-amber-600">{item.already_returned}</span>
                       ) : (
-                        <span className="text-gray-400">0</span>
+                        <span className="text-slate-400">0</span>
                       )}
                     </td>
                     <td className="text-center px-3 py-2">Rs. {Number(item.unit_price).toLocaleString()}</td>
                     <td className="text-center px-3 py-2">
                       {fullyReturned ? (
-                        <span className="text-xs text-gray-400">— returned —</span>
+                        <span className="text-xs text-slate-400">— returned —</span>
                       ) : (
                         <input
                           type="number"
@@ -182,7 +182,7 @@ function Returns() {
                           max={remaining}
                           value={returnItems[item.id] || 0}
                           onChange={(e) => setItemQty(item.id, e.target.value, remaining)}
-                          className="w-16 px-2 py-1 border border-gray-300 rounded text-center"
+                          className="w-16 px-2 py-1 border border-slate-300 rounded text-center"
                         />
                       )}
                     </td>
@@ -197,23 +197,23 @@ function Returns() {
               {/* Refund method + reason */}
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Refund Method</label>
-                  <select value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded text-sm">
+                  <label className="block text-xs text-slate-500 mb-1">Refund Method</label>
+                  <select value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded text-sm">
                     <option value="cash">Cash</option>
                     <option value="card">Card</option>
                     <option value="store_credit">Store Credit</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Reason (optional)</label>
-                  <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. wrong size" className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
+                  <label className="block text-xs text-slate-500 mb-1">Reason (optional)</label>
+                  <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. wrong size" className="w-full px-3 py-2 border border-slate-300 rounded text-sm" />
                 </div>
               </div>
 
               {/* Refund total + button */}
-              <div className="flex justify-between items-center border-t border-gray-200 pt-4">
+              <div className="flex justify-between items-center border-t border-slate-200 pt-4">
                 <div>
-                  <p className="text-sm text-gray-500">Total Refund</p>
+                  <p className="text-sm text-slate-500">Total Refund</p>
                   <p className="text-2xl font-bold text-red-600">Rs. {refundTotal.toLocaleString()}</p>
                 </div>
                 <button
@@ -226,7 +226,7 @@ function Returns() {
               </div>
             </>
           ) : (
-            <p className="text-center text-sm text-gray-500 py-2">
+            <p className="text-center text-sm text-slate-500 py-2">
               All items on this sale have been returned.
             </p>
           )}

@@ -109,11 +109,11 @@ function Products() {
   return (
     <div className="p-6">
       <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Products</h2>
+        <h2 className="text-2xl font-bold text-slate-800">Products</h2>
         <div className="flex gap-2">
           <button
             onClick={() => setShowCategoryModal(true)}
-            className="flex items-center gap-2 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 text-sm"
+            className="flex items-center gap-2 bg-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-300 text-sm"
           >
             <FaTag /> Add Category
           </button>
@@ -129,21 +129,21 @@ function Products() {
       {/* Search + page size */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div className="relative w-full sm:w-72">
-          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search by product or category name..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm"
           />
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
+        <div className="flex items-center gap-2 text-sm text-slate-600">
           <span>Show</span>
           <select
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
-            className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+            className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm"
           >
             {PAGE_SIZE_OPTIONS.map((n) => (
               <option key={n} value={n}>{n}</option>
@@ -154,41 +154,41 @@ function Products() {
       </div>
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-slate-500">Loading...</p>
       ) : products.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-          <FaBoxOpen className="text-gray-300 text-5xl mx-auto mb-3" />
-          <p className="text-gray-500">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-12 text-center">
+          <FaBoxOpen className="text-slate-300 text-5xl mx-auto mb-3" />
+          <p className="text-slate-500">
             {debouncedSearch ? 'No products match your search.' : 'No products yet. Add your first product.'}
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-600">
+            <thead className="bg-slate-50/80 text-slate-500">
               <tr>
-                <th className="text-left px-4 py-3 font-medium">Product</th>
-                <th className="text-left px-4 py-3 font-medium">Category</th>
-                <th className="text-left px-4 py-3 font-medium">Base Price</th>
-                <th className="text-left px-4 py-3 font-medium">Variants</th>
-                <th className="text-left px-4 py-3 font-medium">Status</th>
-                <th className="text-left px-4 py-3 font-medium">Actions</th>
+                <th className="text-left px-4 py-3 font-medium text-[11px] uppercase tracking-wider">Product</th>
+                <th className="text-left px-4 py-3 font-medium text-[11px] uppercase tracking-wider">Category</th>
+                <th className="text-left px-4 py-3 font-medium text-[11px] uppercase tracking-wider">Base Price</th>
+                <th className="text-left px-4 py-3 font-medium text-[11px] uppercase tracking-wider">Variants</th>
+                <th className="text-left px-4 py-3 font-medium text-[11px] uppercase tracking-wider">Status</th>
+                <th className="text-left px-4 py-3 font-medium text-[11px] uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
               {products.map((p) => (
-                <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800">{p.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{p.category_name || '—'}</td>
-                  <td className="px-4 py-3 text-gray-800">Rs. {Number(p.base_price).toLocaleString()}</td>
-                  <td className="px-4 py-3 text-gray-600">{p.variant_count}</td>
+                <tr key={p.id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="px-4 py-3 font-medium text-slate-800">{p.name}</td>
+                  <td className="px-4 py-3 text-slate-600">{p.category_name || '—'}</td>
+                  <td className="px-4 py-3 text-slate-800">Rs. {Number(p.base_price).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-slate-600">{p.variant_count}</td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded text-xs ${p.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`px-2 py-1 rounded text-xs ${p.is_active ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-500'}`}>
                       {p.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-3 text-gray-500">
+                    <div className="flex gap-3 text-slate-500">
                       <button onClick={() => openEdit(p)} title="Edit" className="hover:text-blue-600">
                         <FaEdit />
                       </button>
@@ -209,7 +209,7 @@ function Products() {
 
       {/* Pagination footer */}
       {!loading && totalCount > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-4 text-sm text-gray-600">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-4 text-sm text-slate-600">
           <span>
             Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount} products
           </span>
@@ -217,15 +217,15 @@ function Products() {
             <button
               onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
               disabled={currentPage <= 1}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="px-3 py-1.5 border border-slate-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
             >
               Prev
             </button>
-            <span className="text-gray-500">Page {currentPage} of {totalPages}</span>
+            <span className="text-slate-500">Page {currentPage} of {totalPages}</span>
             <button
               onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
               disabled={currentPage >= totalPages}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="px-3 py-1.5 border border-slate-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
             >
               Next
             </button>
@@ -290,17 +290,17 @@ function CategoryModal({ onClose, onSuccess }) {
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="Category name"
-        className="w-full px-3 py-2 border border-gray-300 rounded mb-3"
+        className="w-full px-3 py-2 border border-slate-300 rounded mb-3"
       />
       <textarea
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="Description (optional)"
-        className="w-full px-3 py-2 border border-gray-300 rounded mb-4"
+        className="w-full px-3 py-2 border border-slate-300 rounded mb-4"
         rows={2}
       />
       <div className="flex gap-2 justify-end">
-        <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+        <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
         <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50">
           {saving ? 'Saving...' : 'Save'}
         </button>
@@ -394,8 +394,8 @@ function ProductModal({ product, categories, onClose, onSuccess }) {
   return (
     <Modal onClose={onClose} title={isEdit ? 'Edit Product' : 'Add Product'} maxWidth="max-w-2xl" scrollable>
         <div className="grid grid-cols-2 gap-3 mb-3">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" className="px-3 py-2 border border-gray-300 rounded" />
-          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="px-3 py-2 border border-gray-300 rounded">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" className="px-3 py-2 border border-slate-300 rounded" />
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="px-3 py-2 border border-slate-300 rounded">
             <option value="">Select category</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -403,18 +403,18 @@ function ProductModal({ product, categories, onClose, onSuccess }) {
           </select>
         </div>
 
-        <input type="number" value={basePrice} onChange={(e) => setBasePrice(e.target.value)} placeholder="Base price" className="w-full px-3 py-2 border border-gray-300 rounded mb-3" />
+        <input type="number" value={basePrice} onChange={(e) => setBasePrice(e.target.value)} placeholder="Base price" className="w-full px-3 py-2 border border-slate-300 rounded mb-3" />
 
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" className="w-full px-3 py-2 border border-gray-300 rounded mb-3" rows={2} />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" className="w-full px-3 py-2 border border-slate-300 rounded mb-3" rows={2} />
 
         {/* Promotion — standing auto-discount applied to all customers */}
-        <div className="mb-4 border border-gray-200 rounded-lg p-3 bg-gray-50">
-          <h4 className="font-medium text-gray-700 text-sm mb-2">Promotion (auto-discount for all customers)</h4>
+        <div className="mb-4 border border-slate-200 rounded-lg p-3 bg-slate-50">
+          <h4 className="font-medium text-slate-700 text-sm mb-2">Promotion (auto-discount for all customers)</h4>
           <div className="grid grid-cols-2 gap-2">
             <select
               value={promoType}
               onChange={(e) => setPromoType(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded text-sm bg-white"
+              className="px-3 py-2 border border-slate-300 rounded text-sm bg-white"
             >
               <option value="">No promotion</option>
               <option value="percent">Percentage (%)</option>
@@ -426,12 +426,12 @@ function ProductModal({ product, categories, onClose, onSuccess }) {
                 value={promoValue}
                 onChange={(e) => setPromoValue(e.target.value)}
                 placeholder={promoType === 'percent' ? 'e.g. 10 (%)' : 'e.g. 200 (Rs.)'}
-                className="px-3 py-2 border border-gray-300 rounded text-sm"
+                className="px-3 py-2 border border-slate-300 rounded text-sm"
               />
             )}
           </div>
           {promoType && (
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-slate-500 mt-2">
               This {promoType === 'percent' ? 'percentage' : 'amount'} is automatically taken off this product's price at checkout for every customer.
             </p>
           )}
@@ -439,7 +439,7 @@ function ProductModal({ product, categories, onClose, onSuccess }) {
 
         {/* Active toggle — only when editing */}
         {isEdit && (
-          <label className="flex items-center gap-2 mb-4 text-sm text-gray-700">
+          <label className="flex items-center gap-2 mb-4 text-sm text-slate-700">
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
             Active (visible in POS)
           </label>
@@ -449,19 +449,19 @@ function ProductModal({ product, categories, onClose, onSuccess }) {
         {!isEdit && (
           <div className="mb-4">
             <div className="flex justify-between items-center mb-2">
-              <h4 className="font-medium text-gray-700 text-sm">Variants</h4>
+              <h4 className="font-medium text-slate-700 text-sm">Variants</h4>
               <button onClick={addVariantRow} className="text-blue-600 text-sm flex items-center gap-1">
                 <FaPlus size={10} /> Add variant
               </button>
             </div>
             {variants.map((v, i) => (
               <div key={i} className="grid grid-cols-7 gap-2 mb-2 items-center">
-                <input value={v.size} onChange={(e) => updateVariant(i, 'size', e.target.value)} placeholder="Size" className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
-                <input value={v.color} onChange={(e) => updateVariant(i, 'color', e.target.value)} placeholder="Colour" className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
-                <input value={v.barcode} onChange={(e) => updateVariant(i, 'barcode', e.target.value)} placeholder="Code (PCTS.01)" className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
-                <input type="number" value={v.costPrice} onChange={(e) => updateVariant(i, 'costPrice', e.target.value)} placeholder="Cost" className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
-                <input type="number" value={v.priceOverride} onChange={(e) => updateVariant(i, 'priceOverride', e.target.value)} placeholder="Price" className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
-                <input type="number" value={v.initialStock} onChange={(e) => updateVariant(i, 'initialStock', e.target.value)} placeholder="Stock" className="px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                <input value={v.size} onChange={(e) => updateVariant(i, 'size', e.target.value)} placeholder="Size" className="px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                <input value={v.color} onChange={(e) => updateVariant(i, 'color', e.target.value)} placeholder="Colour" className="px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                <input value={v.barcode} onChange={(e) => updateVariant(i, 'barcode', e.target.value)} placeholder="Code (PCTS.01)" className="px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                <input type="number" value={v.costPrice} onChange={(e) => updateVariant(i, 'costPrice', e.target.value)} placeholder="Cost" className="px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                <input type="number" value={v.priceOverride} onChange={(e) => updateVariant(i, 'priceOverride', e.target.value)} placeholder="Price" className="px-2 py-1.5 border border-slate-300 rounded text-sm" />
+                <input type="number" value={v.initialStock} onChange={(e) => updateVariant(i, 'initialStock', e.target.value)} placeholder="Stock" className="px-2 py-1.5 border border-slate-300 rounded text-sm" />
                 <button onClick={() => removeVariant(i)} className="text-red-500 text-sm">Remove</button>
               </div>
             ))}
@@ -469,13 +469,13 @@ function ProductModal({ product, categories, onClose, onSuccess }) {
         )}
 
         {isEdit && (
-          <p className="text-xs text-gray-400 mb-4">
+          <p className="text-xs text-slate-400 mb-4">
             To add or change variants, use the inventory screen. Editing here updates the product details only.
           </p>
         )}
 
         <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50">
             {saving ? 'Saving...' : isEdit ? 'Update' : 'Create Product'}
           </button>
@@ -518,39 +518,39 @@ function ManageBatchesModal({ product, onClose, onSuccess }) {
     <Modal onClose={onClose} titleId="manage-batches-title" maxWidth="max-w-3xl" scrollable>
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h3 id="manage-batches-title" className="text-lg font-bold text-gray-800">Manage Batches</h3>
-            <p className="text-sm text-gray-500">{product.name}</p>
+            <h3 id="manage-batches-title" className="text-lg font-bold text-slate-800">Manage Batches</h3>
+            <p className="text-sm text-slate-500">{product.name}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
         {/* LIST MODE */}
         {mode === 'list' && (
           <>
             {loading ? (
-              <p className="text-gray-500 text-sm">Loading batches...</p>
+              <p className="text-slate-500 text-sm">Loading batches...</p>
             ) : variants.length === 0 ? (
-              <p className="text-gray-500 text-sm">No batches yet.</p>
+              <p className="text-slate-500 text-sm">No batches yet.</p>
             ) : (
               <table className="w-full text-sm mb-4">
-                <thead className="bg-gray-50 text-gray-600">
+                <thead className="bg-slate-50/80 text-slate-500">
                   <tr>
-                    <th className="text-left px-3 py-2 font-medium">Code</th>
-                    <th className="text-left px-3 py-2 font-medium">Size/Colour</th>
-                    <th className="text-right px-3 py-2 font-medium">Cost</th>
-                    <th className="text-right px-3 py-2 font-medium">Price</th>
-                    <th className="text-center px-3 py-2 font-medium">Stock</th>
-                    <th className="text-center px-3 py-2 font-medium">Edit</th>
+                    <th className="text-left px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Code</th>
+                    <th className="text-left px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Size/Colour</th>
+                    <th className="text-right px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Cost</th>
+                    <th className="text-right px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Price</th>
+                    <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Stock</th>
+                    <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Edit</th>
                   </tr>
                 </thead>
                 <tbody>
                   {variants.map((v) => (
-                    <tr key={v.id} className="border-t border-gray-100">
-                      <td className="px-3 py-2 font-medium text-gray-800">{v.barcode || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{v.size || '—'} · {v.color || '—'}</td>
-                      <td className="px-3 py-2 text-right text-gray-600">Rs. {Number(v.cost_price || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right text-gray-800">Rs. {Number(v.price_override || product.base_price).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-center text-gray-600">{v.quantity ?? '—'}</td>
+                    <tr key={v.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-medium text-slate-800">{v.barcode || '—'}</td>
+                      <td className="px-3 py-2 text-slate-600">{v.size || '—'} · {v.color || '—'}</td>
+                      <td className="px-3 py-2 text-right text-slate-600">Rs. {Number(v.cost_price || 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right text-slate-800">Rs. {Number(v.price_override || product.base_price).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center text-slate-600">{v.quantity ?? '—'}</td>
                       <td className="px-3 py-2 text-center">
                         <button
                           onClick={() => { setEditing(v); setMode('edit'); }}
@@ -572,7 +572,7 @@ function ManageBatchesModal({ product, onClose, onSuccess }) {
               >
                 <FaPlus /> Add New Batch
               </button>
-              <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Close</button>
+              <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Close</button>
             </div>
           </>
         )}
@@ -664,43 +664,43 @@ function BatchForm({ product, variant, onCancel, onSaved }) {
 
   return (
     <div>
-      <h4 className="font-medium text-gray-700 mb-3">{isEdit ? `Edit Batch — ${variant.barcode}` : 'Add New Batch'}</h4>
+      <h4 className="font-medium text-slate-700 mb-3">{isEdit ? `Edit Batch — ${variant.barcode}` : 'Add New Batch'}</h4>
 
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Size</label>
-          <input value={size} onChange={(e) => setSize(e.target.value)} placeholder="e.g. M" className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
+          <label className="block text-xs text-slate-500 mb-1">Size</label>
+          <input value={size} onChange={(e) => setSize(e.target.value)} placeholder="e.g. M" className="w-full px-3 py-2 border border-slate-300 rounded text-sm" />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Colour</label>
-          <input value={color} onChange={(e) => setColor(e.target.value)} placeholder="e.g. black" className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
+          <label className="block text-xs text-slate-500 mb-1">Colour</label>
+          <input value={color} onChange={(e) => setColor(e.target.value)} placeholder="e.g. black" className="w-full px-3 py-2 border border-slate-300 rounded text-sm" />
         </div>
       </div>
 
       <div className="mb-3">
-        <label className="block text-xs text-gray-500 mb-1">Batch Code (barcode)</label>
-        <input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="e.g. PCTS-MB.02" className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
+        <label className="block text-xs text-slate-500 mb-1">Batch Code (barcode)</label>
+        <input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="e.g. PCTS-MB.02" className="w-full px-3 py-2 border border-slate-300 rounded text-sm" />
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Cost Price</label>
-          <input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} placeholder="e.g. 900" className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
+          <label className="block text-xs text-slate-500 mb-1">Cost Price</label>
+          <input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} placeholder="e.g. 900" className="w-full px-3 py-2 border border-slate-300 rounded text-sm" />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Selling Price</label>
-          <input type="number" value={priceOverride} onChange={(e) => setPriceOverride(e.target.value)} placeholder="e.g. 1700" className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
+          <label className="block text-xs text-slate-500 mb-1">Selling Price</label>
+          <input type="number" value={priceOverride} onChange={(e) => setPriceOverride(e.target.value)} placeholder="e.g. 1700" className="w-full px-3 py-2 border border-slate-300 rounded text-sm" />
         </div>
       </div>
 
       {/* Clearance promo — auto-discount this batch only */}
       <div className="mb-4 border border-amber-200 rounded-lg p-3 bg-amber-50">
-        <h5 className="font-medium text-gray-700 text-sm mb-2">Clearance Promo (this batch only)</h5>
+        <h5 className="font-medium text-slate-700 text-sm mb-2">Clearance Promo (this batch only)</h5>
         <div className="grid grid-cols-2 gap-2">
           <select
             value={promoType}
             onChange={(e) => setPromoType(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded text-sm bg-white"
+            className="px-3 py-2 border border-slate-300 rounded text-sm bg-white"
           >
             <option value="">No clearance</option>
             <option value="percent">Percentage (%)</option>
@@ -712,12 +712,12 @@ function BatchForm({ product, variant, onCancel, onSaved }) {
               value={promoValue}
               onChange={(e) => setPromoValue(e.target.value)}
               placeholder={promoType === 'percent' ? 'e.g. 20 (%)' : 'e.g. 300 (Rs.)'}
-              className="px-3 py-2 border border-gray-300 rounded text-sm"
+              className="px-3 py-2 border border-slate-300 rounded text-sm"
             />
           )}
         </div>
         {promoType && (
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-slate-500 mt-2">
             This clearance discount applies only to this batch, automatically at checkout.
           </p>
         )}
@@ -727,24 +727,24 @@ function BatchForm({ product, variant, onCancel, onSaved }) {
       {!isEdit && (
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Initial Stock</label>
-            <input type="number" value={initialStock} onChange={(e) => setInitialStock(e.target.value)} placeholder="0" className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
+            <label className="block text-xs text-slate-500 mb-1">Initial Stock</label>
+            <input type="number" value={initialStock} onChange={(e) => setInitialStock(e.target.value)} placeholder="0" className="w-full px-3 py-2 border border-slate-300 rounded text-sm" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Min Quantity (low-stock alert)</label>
-            <input type="number" value={minQuantity} onChange={(e) => setMinQuantity(e.target.value)} placeholder="5" className="w-full px-3 py-2 border border-gray-300 rounded text-sm" />
+            <label className="block text-xs text-slate-500 mb-1">Min Quantity (low-stock alert)</label>
+            <input type="number" value={minQuantity} onChange={(e) => setMinQuantity(e.target.value)} placeholder="5" className="w-full px-3 py-2 border border-slate-300 rounded text-sm" />
           </div>
         </div>
       )}
 
       {isEdit && (
-        <p className="text-xs text-gray-400 mb-4">
+        <p className="text-xs text-slate-400 mb-4">
           To change stock, use the Inventory screen. Changing price/cost here only affects future sales — past sales keep their original figures.
         </p>
       )}
 
       <div className="flex gap-2 justify-end">
-        <button onClick={onCancel} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+        <button onClick={onCancel} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
         <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50">
           {saving ? 'Saving...' : isEdit ? 'Update Batch' : 'Add Batch'}
         </button>

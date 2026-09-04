@@ -95,20 +95,20 @@ function Sidebar({ isOpen = false, onClose = () => {} }) {
       )}
 
       <div
-        className={`fixed md:static inset-y-0 left-0 z-40 w-60 bg-gray-900 text-white flex flex-col h-screen
+        className={`fixed md:static inset-y-0 left-0 z-40 w-60 bg-slate-900 text-white flex flex-col h-screen
           transform transition-transform duration-200 ease-in-out
           ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
       >
-        <div className="p-5 border-b border-gray-700 flex items-start justify-between">
+        <div className="p-5 border-b border-slate-700 flex items-start justify-between">
           <div>
             <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-yellow-500 to-yellow-300">
               ROPYCO Fashion
             </h1>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-slate-400 mt-1">
               {user?.name} · {user?.role}
             </p>
           </div>
-          <button onClick={onClose} className="md:hidden text-gray-400 hover:text-white text-xl leading-none">
+          <button onClick={onClose} className="md:hidden text-slate-400 hover:text-white text-xl leading-none">
             ×
           </button>
         </div>
@@ -123,7 +123,7 @@ function Sidebar({ isOpen = false, onClose = () => {} }) {
                 `flex items-center gap-3 px-4 py-2.5 rounded mb-1 text-sm transition ${
                   isActive
                     ? 'bg-yellow-500 text-black'
-                    : 'text-gray-300 hover:bg-gray-800'
+                    : 'text-slate-300 hover:bg-slate-800'
                 }`
               }
             >
@@ -140,7 +140,7 @@ function Sidebar({ isOpen = false, onClose = () => {} }) {
           </div>
         )}
 
-        <div className="p-3 border-t border-gray-700">
+        <div className="p-3 border-t border-slate-700">
           <button
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 bg-red-600 text-white py-2 rounded text-sm hover:bg-red-700"

@@ -7,12 +7,12 @@ function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-slate-100">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile top bar — hidden on md+ where the sidebar is always visible */}
-        <div className="md:hidden flex items-center gap-3 bg-gray-900 text-white px-4 py-3">
+        <div className="md:hidden flex items-center gap-3 bg-slate-900 text-white px-4 py-3">
           <button onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="text-xl">
             <FaBars />
           </button>

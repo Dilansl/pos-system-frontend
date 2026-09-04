@@ -28,10 +28,10 @@ function Modal({ onClose, children, title, titleId, maxWidth = 'max-w-md', scrol
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelId}
-        className={`bg-white rounded-lg p-6 w-full ${maxWidth} ${scrollable ? 'max-h-[90vh] overflow-y-auto' : ''}`}
+        className={`bg-white rounded-2xl shadow-xl border border-slate-200/60 p-6 w-full ${maxWidth} ${scrollable ? 'max-h-[90vh] overflow-y-auto' : ''}`}
       >
         {title && (
-          <h3 id={labelId} className="text-lg font-bold text-gray-800 mb-4">
+          <h3 id={labelId} className="text-lg font-bold text-slate-800 mb-4">
             {title}
           </h3>
         )}
