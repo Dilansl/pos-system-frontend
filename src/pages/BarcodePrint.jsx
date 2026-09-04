@@ -159,7 +159,7 @@ function BarcodePrint() {
                 <button
                   key={p.id}
                   onClick={() => selectProduct(p)}
-                  className={`w-full text-left px-3 py-2 rounded text-sm ${selectedProduct?.id === p.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 text-gray-700'}`}
+                  className={`w-full text-left px-3 py-2 rounded text-sm ${selectedProduct?.id === p.id ? 'bg-yellow-500 text-black' : 'hover:bg-gray-100 text-gray-700'}`}
                 >
                   {p.name}
                 </button>
@@ -180,7 +180,7 @@ function BarcodePrint() {
                       key={v.id}
                       onClick={() => setSelectedVariant(v)}
                       disabled={!v.barcode}
-                      className={`w-full text-left px-3 py-2 rounded text-sm ${selectedVariant?.id === v.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 text-gray-700'} ${!v.barcode ? 'opacity-40 cursor-not-allowed' : ''}`}
+                      className={`w-full text-left px-3 py-2 rounded text-sm ${selectedVariant?.id === v.id ? 'bg-yellow-500 text-black' : 'hover:bg-gray-100 text-gray-700'} ${!v.barcode ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
                       {v.barcode || '(no code)'} · {v.size || '—'}/{v.color || '—'} · Rs. {Number(v.price_override || selectedProduct.base_price).toLocaleString()}
                     </button>
@@ -233,7 +233,7 @@ function BarcodePrint() {
               />
               <button
                 onClick={handlePrint}
-                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700"
+                className="w-full flex items-center justify-center gap-2 bg-yellow-500 text-black py-2.5 rounded-lg hover:bg-yellow-600"
               >
                 <FaPrint /> Print {quantity} Label{quantity > 1 ? 's' : ''}
               </button>

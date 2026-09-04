@@ -74,7 +74,7 @@ function Reports() {
       <h2 className="text-2xl font-bold text-gray-800 mb-4">Reports</h2>
 
       {/* Date range */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-6 flex items-end gap-3">
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-6 flex flex-wrap items-end gap-3">
         <div>
           <label className="block text-xs text-gray-500 mb-1">From</label>
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-2 border border-gray-300 rounded text-sm" />
@@ -83,7 +83,7 @@ function Reports() {
           <label className="block text-xs text-gray-500 mb-1">To</label>
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-2 border border-gray-300 rounded text-sm" />
         </div>
-        <button onClick={loadReports} className="bg-blue-600 text-white px-5 py-2 rounded text-sm hover:bg-blue-700">
+        <button onClick={loadReports} className="bg-yellow-500 text-black px-5 py-2 rounded text-sm hover:bg-yellow-600">
           Apply
         </button>
       </div>

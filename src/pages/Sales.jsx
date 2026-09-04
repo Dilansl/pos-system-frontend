@@ -169,7 +169,7 @@ function Sales() {
           <Receipt ref={receiptRef} sale={completedSale} />
         </div>
         <div className="flex gap-3">
-          <button onClick={handlePrint} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
+          <button onClick={handlePrint} className="flex items-center gap-2 bg-yellow-500 text-black px-6 py-3 rounded-lg hover:bg-yellow-600">
             <FaPrint /> Print Receipt
           </button>
           <button onClick={startNewSale} className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700">
@@ -337,13 +337,13 @@ function Sales() {
                     <div className="flex border border-gray-300 rounded overflow-hidden">
                       <button
                         onClick={() => setItemDiscountType(item.variantId, 'percent')}
-                        className={`px-2 py-0.5 text-xs ${item.discountType === 'percent' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                        className={`px-2 py-0.5 text-xs ${item.discountType === 'percent' ? 'bg-yellow-500 text-black' : 'bg-gray-100 text-gray-600'}`}
                       >
                         %
                       </button>
                       <button
                         onClick={() => setItemDiscountType(item.variantId, 'fixed')}
-                        className={`px-2 py-0.5 text-xs ${item.discountType === 'fixed' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                        className={`px-2 py-0.5 text-xs ${item.discountType === 'fixed' ? 'bg-yellow-500 text-black' : 'bg-gray-100 text-gray-600'}`}
                       >
                         Rs
                       </button>
@@ -386,7 +386,7 @@ function Sales() {
               <button
                 key={method}
                 onClick={() => setPaymentMethod(method)}
-                className={`flex-1 py-2 text-xs rounded capitalize ${paymentMethod === method ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                className={`flex-1 py-2 text-xs rounded capitalize ${paymentMethod === method ? 'bg-yellow-500 text-black' : 'bg-gray-100 text-gray-700'}`}
               >
                 {method.replace('_', ' ')}
               </button>

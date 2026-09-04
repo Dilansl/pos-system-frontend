@@ -111,7 +111,7 @@ function Returns() {
           <button
             onClick={handleLookup}
             disabled={loading}
-            className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+            className="flex items-center gap-2 bg-yellow-500 text-black px-5 py-2 rounded text-sm hover:bg-yellow-600 disabled:opacity-50"
           >
             <FaSearch /> {loading ? 'Looking up...' : 'Look Up'}
           </button>

@@ -123,13 +123,13 @@ function Transactions() {
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => setTab('sales')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${tab === 'sales' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'}`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${tab === 'sales' ? 'bg-yellow-500 text-black' : 'bg-white text-gray-600 border border-gray-200'}`}
         >
           <FaReceipt /> Sales ({sales.length})
         </button>
         <button
           onClick={() => setTab('refunds')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${tab === 'refunds' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'}`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${tab === 'refunds' ? 'bg-yellow-500 text-black' : 'bg-white text-gray-600 border border-gray-200'}`}
         >
           <FaUndo /> Refunds ({refunds.length})
         </button>
