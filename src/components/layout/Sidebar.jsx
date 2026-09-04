@@ -1,11 +1,15 @@
+import { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import useAuthStore from '../../store/authStore';
+import saleService from '../../services/sale.service';
+import offlineQueue from '../../utils/offlineQueue';
 import {
   MdDashboard,
   MdPointOfSale,
   MdInventory2,
   MdAssessment,
   MdLogout,
+  MdCloudOff,
 } from 'react-icons/md';
 import { FaBoxOpen, FaUsers, FaUserFriends, FaUndo, FaReceipt, FaCashRegister, FaBarcode } from 'react-icons/fa';
 
@@ -13,11 +17,54 @@ function Sidebar() {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
+  const [pendingCount, setPendingCount] = useState(0);
+  const syncingRef = useRef(false);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
+
+  // Replay any sales that got queued while offline. Safe to retry blindly —
+  // each carries the idempotency key from its original checkout attempt, so
+  // the server treats a resend as a replay rather than a new sale.
+  useEffect(() => {
+    const syncPending = async () => {
+      if (syncingRef.current) return;
+      const queue = offlineQueue.list();
+      if (queue.length === 0) {
+        setPendingCount(0);
+        return;
+      }
+      syncingRef.current = true;
+      for (const { saleData } of queue) {
+        try {
+          await saleService.create({ ...saleData, offlineRetry: true });
+          offlineQueue.remove(saleData.idempotencyKey);
+        } catch (err) {
+          if (err.response) {
+            // Server rejected it outright (not a connectivity issue) — drop it,
+            // retrying forever won't help and it'd block the rest of the queue.
+            offlineQueue.remove(saleData.idempotencyKey);
+          }
+          // else: still offline — leave it queued, try again next tick.
+        }
+      }
+      syncingRef.current = false;
+      setPendingCount(offlineQueue.list().length);
+    };
+
+    setPendingCount(offlineQueue.list().length);
+    syncPending();
+
+    window.addEventListener('online', syncPending);
+    const interval = setInterval(syncPending, 30000);
+
+    return () => {
+      window.removeEventListener('online', syncPending);
+      clearInterval(interval);
+    };
+  }, []);
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <MdDashboard />, roles: ['admin', 'manager', 'cashier'] },
@@ -64,6 +111,13 @@ function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {pendingCount > 0 && (
+        <div className="mx-3 mb-2 flex items-center gap-2 bg-orange-900/40 text-orange-300 px-3 py-2 rounded text-xs">
+          <MdCloudOff className="text-sm" />
+          {pendingCount} sale{pendingCount > 1 ? 's' : ''} pending sync
+        </div>
+      )}
 
       <div className="p-3 border-t border-gray-700">
         <button

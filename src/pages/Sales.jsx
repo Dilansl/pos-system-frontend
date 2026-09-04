@@ -6,6 +6,7 @@ import productService from '../services/product.service';
 import saleService from '../services/sale.service';
 import useCartStore from '../store/cartStore';
 import Receipt from '../components/sales/Receipt';
+import offlineQueue from '../utils/offlineQueue';
 
 function Sales() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,6 +18,10 @@ function Sales() {
   const [completedSale, setCompletedSale] = useState(null);
 
   const receiptRef = useRef();
+  // Stays the same across retries of one checkout attempt (network timeout, etc.)
+  // so a resubmission is recognized server-side as a replay, not a new sale.
+  // Only regenerated after a sale actually completes or the cart is cleared.
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   const {
     items, addItem, increaseQty, decreaseQty, removeItem,
@@ -99,6 +104,7 @@ function Sales() {
     setProcessing(true);
 
     const saleData = {
+      idempotencyKey: idempotencyKeyRef.current,
       subtotal: getSubtotal(),
       discountAmount: getTotalDiscount(),
       taxAmount: 0,
@@ -106,9 +112,11 @@ function Sales() {
       items: items.map((i) => ({
         variantId: i.variantId,
         quantity: i.quantity,
-        unitPrice: i.sellPrice,
-        discountAmount: getItemDiscount(i),
-        lineTotal: getItemLineTotal(i),
+        // unitPrice/promo/lineTotal are recomputed server-side from the product's
+        // own price and promo config — only the cashier's own bargain discount is
+        // actually client input, so that's all we send.
+        discountType: i.discountValue ? i.discountType : null,
+        discountValue: i.discountValue || 0,
       })),
       payments: [{ method: paymentMethod, amount: total, reference: null }],
     };
@@ -124,11 +132,20 @@ function Sales() {
       setCompletedSale(saleForReceipt);
       toast.success('Sale completed!');
       clearCart();
+      idempotencyKeyRef.current = crypto.randomUUID();
       setCashReceived('');
       setSearchTerm('');
       setResults([]);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Sale failed.');
+      if (!err.response) {
+        // The request never reached the server at all (offline/unreachable) —
+        // distinct from a 4xx/5xx business rejection, which the server DID see
+        // and should be surfaced normally instead of silently retried.
+        offlineQueue.enqueue(saleData);
+        toast.error('No connection — sale saved and will sync automatically once you\'re back online.');
+      } else {
+        toast.error(err.response?.data?.message || 'Sale failed.');
+      }
     } finally {
       setProcessing(false);
     }
