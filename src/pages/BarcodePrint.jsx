@@ -80,6 +80,7 @@ function BarcodePrint() {
 
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [variants, setVariants] = useState([]);
   const [selectedVariant, setSelectedVariant] = useState(null);
@@ -90,20 +91,28 @@ function BarcodePrint() {
 
   const printRef = useRef();
 
-  const loadProducts = async () => {
-    try {
-      const res = await productService.getAll();
-      setProducts(res.data);
-    } catch (err) {
-      toast.error('Failed to load products.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Debounce: wait 350ms after the user stops typing before searching
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Server-side search — was a client-side filter over a single fixed page of
+  // products, so anything past the first page was invisible and unsearchable.
+  useEffect(() => {
+    const loadProducts = async () => {
+      setLoading(true);
+      try {
+        const res = await productService.getAll({ search: debouncedSearch, limit: 50 });
+        setProducts(res.data);
+      } catch (err) {
+        toast.error('Failed to load products.');
+      } finally {
+        setLoading(false);
+      }
+    };
     loadProducts();
-  }, []);
+  }, [debouncedSearch]);
 
   const selectProduct = async (product) => {
     setSelectedProduct(product);
@@ -120,13 +129,9 @@ function BarcodePrint() {
     contentRef: printRef,
   });
 
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  );
-
   // The price to show: variant price override, else product base price
   const labelPrice = selectedVariant
-    ? Number(selectedVariant.price_override || selectedProduct.base_price)
+    ? Number(selectedVariant.price_override ?? selectedProduct.base_price)
     : 0;
 
   const labelCode = selectedVariant?.barcode || '';
@@ -155,7 +160,12 @@ function BarcodePrint() {
             <p className="text-slate-500 text-sm">Loading...</p>
           ) : (
             <div className="max-h-60 overflow-y-auto space-y-1 mb-4">
-              {filtered.map((p) => (
+              {products.length === 0 && (
+                <p className="text-slate-400 text-sm">
+                  {debouncedSearch ? 'No products match your search.' : 'No products yet.'}
+                </p>
+              )}
+              {products.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => selectProduct(p)}
@@ -182,7 +192,7 @@ function BarcodePrint() {
                       disabled={!v.barcode}
                       className={`w-full text-left px-3 py-2 rounded text-sm ${selectedVariant?.id === v.id ? 'bg-yellow-500 text-black' : 'hover:bg-slate-50 text-slate-700 border border-slate-200'} ${!v.barcode ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
-                      {v.barcode || '(no code)'} · {v.size || '—'}/{v.color || '—'} · Rs. {Number(v.price_override || selectedProduct.base_price).toLocaleString()}
+                      {v.barcode || '(no code)'} · {v.size || '—'}/{v.color || '—'} · Rs. {Number(v.price_override ?? selectedProduct.base_price).toLocaleString()}
                     </button>
                   ))
                 )}
