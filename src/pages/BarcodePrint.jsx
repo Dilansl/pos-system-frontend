@@ -127,6 +127,15 @@ function BarcodePrint() {
 
   const handlePrint = useReactToPrint({
     contentRef: printRef,
+    // react-to-print temporarily sets document.title to this (main window AND
+    // its print iframe) for the duration of window.print(), then restores it —
+    // that's what a browser's print header actually reads. Without this it
+    // falls back to index.html's title, which is still the unedited Vite
+    // default ("frontend") — that's the literal source of the bug.
+    documentTitle: () =>
+      selectedProduct
+        ? `${SHOP_NAME} - ${selectedProduct.name} Barcode Label`
+        : `${SHOP_NAME} - Barcode Label`,
   });
 
   // The price to show: variant price override, else product base price
@@ -247,6 +256,11 @@ function BarcodePrint() {
               >
                 <FaPrint /> Print {quantity} Label{quantity > 1 ? 's' : ''}
               </button>
+              <p className="text-xs text-slate-400 mt-2">
+                First time printing labels? In the print dialog, open <span className="font-medium">More settings</span> and
+                set <span className="font-medium">Margins</span> to <span className="font-medium">None</span> and
+                uncheck <span className="font-medium">Headers and footers</span> — your browser remembers this afterward.
+              </p>
             </>
           )}
         </div>
@@ -281,6 +295,13 @@ function BarcodePrint() {
         <div ref={printRef}>
           <style>{`
             @media print {
+              /* margin: 0 here is the label's own content margin — already
+                 zeroed, which is the most CSS can control. The browser's own
+                 header/footer (date, URL, page number) lives in a separate
+                 reserved band governed by the print dialog's "Margins"
+                 setting, not by @page margin — no CSS/JS can reach that from
+                 the page in Chrome, Edge, or Firefox. See the tip next to the
+                 Print button for the actual (browser-side) mitigation. */
               @page {
                 size: ${labelWidth}mm ${labelHeight}mm;
                 margin: 0;
