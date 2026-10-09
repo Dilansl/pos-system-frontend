@@ -68,9 +68,9 @@ function Shift() {
     }
   };
 
-  // Expected drawer = opening cash + cash sales
+  // Expected drawer = opening cash + cash sales − cash refunds
   const expectedDrawer = (shift, cashSales) =>
-    Number(shift.opening_cash) + Number(cashSales || 0);
+    Number(shift.opening_cash) + Number(cashSales || 0) - Number(shift.cash_refunds || 0);
 
   return (
     <div className="p-6 max-w-2xl">
@@ -147,6 +147,9 @@ function Shift() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-slate-500">Opening Cash:</span> Rs. {Number(lastClosed.opening_cash).toLocaleString()}</div>
                 <div><span className="text-slate-500">Cash Sales:</span> Rs. {Number(lastClosed.cash_sales || 0).toLocaleString()}</div>
+                {Number(lastClosed.cash_refunds) > 0 && (
+                  <div><span className="text-slate-500">Cash Refunds:</span> −Rs. {Number(lastClosed.cash_refunds).toLocaleString()}</div>
+                )}
                 <div><span className="text-slate-500">Expected in Drawer:</span> Rs. {expectedDrawer(lastClosed, lastClosed.cash_sales).toLocaleString()}</div>
                 <div><span className="text-slate-500">Counted (Closing):</span> Rs. {Number(lastClosed.closing_cash).toLocaleString()}</div>
                 <div className="col-span-2 pt-2 border-t border-blue-200">

@@ -23,24 +23,29 @@ const useCartStore = create((set, get) => ({
   // Discount on the whole bill (cashier input), applied after line discounts.
   billDiscountType: 'percent',
   billDiscountValue: 0,
+  // Items coming back for an exchange/refund (one original bill):
+  // { originalSaleId, receiptLabel, reason, items: [{ saleItemId, productName,
+  //   size, color, quantity, refund }] } — refund = what was paid for them.
+  returnInfo: null,
   // Parked carts — persisted so they survive a page refresh or nav away/back.
   heldCarts: readHeldCarts(),
 
   // Park the current cart (e.g. to serve another customer) and start a fresh one.
   holdCart: (label) => {
-    const items = get().items;
-    if (items.length === 0) return;
+    const { items, returnInfo } = get();
+    if (items.length === 0 && !returnInfo) return;
     const held = {
       id: crypto.randomUUID(),
       label: label?.trim() || `Hold ${get().heldCarts.length + 1}`,
       items,
       billDiscountType: get().billDiscountType,
       billDiscountValue: get().billDiscountValue,
+      returnInfo,
       heldAt: new Date().toISOString(),
     };
     const heldCarts = [...get().heldCarts, held];
     writeHeldCarts(heldCarts);
-    set({ heldCarts, items: [], billDiscountType: 'percent', billDiscountValue: 0 });
+    set({ heldCarts, items: [], billDiscountType: 'percent', billDiscountValue: 0, returnInfo: null });
   },
 
   // Bring a parked cart back as the active cart. Caller is responsible for
@@ -55,8 +60,14 @@ const useCartStore = create((set, get) => ({
       items: held.items,
       billDiscountType: held.billDiscountType || 'percent',
       billDiscountValue: held.billDiscountValue || 0,
+      returnInfo: held.returnInfo || null,
     });
   },
+
+  setReturnInfo: (returnInfo) => set({ returnInfo }),
+
+  // Credit from the returned items (what the customer originally paid).
+  getReturnCredit: () => (get().returnInfo?.items || []).reduce((sum, i) => sum + i.refund, 0),
 
   discardHeldCart: (id) => {
     const heldCarts = get().heldCarts.filter((h) => h.id !== id);
@@ -169,7 +180,7 @@ const useCartStore = create((set, get) => ({
 
   setBillDiscountValue: (value) => set({ billDiscountValue: Number(value) || 0 }),
 
-  clearCart: () => set({ items: [], billDiscountType: 'percent', billDiscountValue: 0 }),
+  clearCart: () => set({ items: [], billDiscountType: 'percent', billDiscountValue: 0, returnInfo: null }),
 
   // ─── Calculations ───────────────────────────────
 

@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
-import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes, FaUserShield, FaCashRegister } from 'react-icons/fa';
+import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes, FaUserShield, FaCashRegister, FaUndo } from 'react-icons/fa';
 import productService from '../services/product.service';
 import saleService from '../services/sale.service';
 import settingsService from '../services/settings.service';
 import shiftService from '../services/shift.service';
+import returnService from '../services/return.service';
 import useCartStore from '../store/cartStore';
 import useAuthStore from '../store/authStore';
 import Receipt from '../components/sales/Receipt';
@@ -13,9 +14,11 @@ import Modal from '../components/common/Modal';
 import offlineQueue from '../utils/offlineQueue';
 import { compareVariants } from '../utils/sizeSort';
 import { beep } from '../utils/beep';
+import { remainingQty, paidPerUnit, refundFor } from '../utils/returnMath';
 
 const PAYMENT_METHODS = ['cash', 'card', 'bank_transfer'];
 const DISCOUNT_REASONS = ['Bargain', 'Regular customer', 'Damaged / defect', 'Staff purchase', 'Other'];
+const RETURN_REASONS = ['Wrong size', 'Defect / damaged', 'Changed mind', 'Other'];
 const AUTO_PRINT_KEY = 'pos.autoPrintReceipt';
 
 // Quick-cash buttons: the next round notes at or above the amount due
@@ -59,6 +62,12 @@ function Sales() {
   const [approval, setApproval] = useState(null); // { token, approverName, percent }
   const [showApproval, setShowApproval] = useState(false);
   const [discountReason, setDiscountReason] = useState('');
+  // Returns/exchanges: how money owed back is given, and the manager approval
+  // a cashier needs for a cash refund.
+  const [showReturnPicker, setShowReturnPicker] = useState(false);
+  const [refundMethod, setRefundMethod] = useState('cash');
+  const [refundApproval, setRefundApproval] = useState(null); // { token, approverName, amount }
+  const [showRefundApproval, setShowRefundApproval] = useState(false);
   const user = useAuthStore((state) => state.user);
 
   const receiptRef = useRef();
@@ -77,6 +86,7 @@ function Sales() {
     getItemPromoDiscount,
     billDiscountType, billDiscountValue, setBillDiscountType, setBillDiscountValue,
     getBillDiscount, getItemCashierPercent, getMaxCashierPercent,
+    returnInfo, setReturnInfo, getReturnCredit,
     clearCart, getSubtotal, getTotal, getTotalDiscount, getItemCount,
     heldCarts, holdCart, resumeCart, discardHeldCart,
   } = useCartStore();
@@ -254,15 +264,25 @@ function Sales() {
     focusSearch();
   };
 
+  // ─── Exchange / return amounts ────────────────────
+  // New items' total minus the credit for items coming back. Positive: the
+  // customer pays the difference. Negative: the shop pays it back.
+  const total = getTotal();
+  const returnCredit = getReturnCredit();
+  const net = Math.round((total - returnCredit) * 100) / 100;
+  const due = Math.max(net, 0);
+  const refundOut = Math.max(-net, 0);
+  const needsRefundPin = refundOut > 0 && refundMethod === 'cash' && user?.role === 'cashier';
+  const cartBusy = items.length > 0 || !!returnInfo;
+
   // ─── Split-tender payment helpers ─────────────────
   const isSplit = payments.length > 1;
-  const total = getTotal();
   const paymentsTotal = isSplit
     ? payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-    : total;
-  const remaining = Math.round((total - paymentsTotal) * 100) / 100;
-  const cashLine = payments.find((p) => p.method === 'cash');
-  const cashDue = isSplit ? (Number(cashLine?.amount) || 0) : total;
+    : due;
+  const remaining = Math.round((due - paymentsTotal) * 100) / 100;
+  const cashLine = due > 0 ? payments.find((p) => p.method === 'cash') : null;
+  const cashDue = isSplit ? (Number(cashLine?.amount) || 0) : due;
   // Empty "cash received" = exact money; no typing needed.
   const cashGiven = cashReceived === '' ? cashDue : Number(cashReceived);
   const change = cashGiven - cashDue;
@@ -273,7 +293,7 @@ function Sales() {
     const first = payments[0].method;
     const second = PAYMENT_METHODS.find((m) => m !== first) || 'card';
     setPayments([
-      { method: first, amount: total.toFixed(2) },
+      { method: first, amount: due.toFixed(2) },
       { method: second, amount: '0' },
     ]);
   };
@@ -299,12 +319,13 @@ function Sales() {
   };
 
   const handleHold = () => {
-    if (items.length === 0) {
+    if (items.length === 0 && !returnInfo) {
       toast.error('Cart is empty — nothing to hold.');
       return;
     }
     holdCart();
     setApproval(null);
+    setRefundApproval(null);
     setDiscountReason('');
     toast.success('Sale held. Resume it from "Held Sales".');
     setSearchTerm('');
@@ -317,32 +338,112 @@ function Sales() {
     }
     resumeCart(id);
     setApproval(null);
+    setRefundApproval(null);
     setShowHeldList(false);
     toast.success('Held sale resumed.');
   };
 
-  // approvalOverride: the approval just granted in the PIN dialog (state
-  // hasn't updated yet when checkout continues straight after it).
-  const handleCheckout = async (approvalOverride) => {
+  const resetAfterCheckout = () => {
+    clearCart();
+    setApproval(null);
+    setRefundApproval(null);
+    setRefundMethod('cash');
+    setDiscountReason('');
+    idempotencyKeyRef.current = crypto.randomUUID();
+    setPayments([{ method: 'cash', amount: '' }]);
+    setCashReceived('');
+    setSearchTerm('');
+    setResults([]);
+    focusSearch();
+  };
+
+  const returnItemsPayload = () => returnInfo.items.map((i) => ({
+    saleItemId: i.saleItemId,
+    quantity: i.quantity,
+  }));
+
+  // Only items coming back, nothing new — a plain refund.
+  const handleReturnOnly = async (activeRefundApproval) => {
+    setProcessing(true);
+    try {
+      const res = await returnService.create({
+        originalSaleId: returnInfo.originalSaleId,
+        refundMethod,
+        reason: returnInfo.reason || null,
+        items: returnItemsPayload(),
+        refundApprovalToken: activeRefundApproval?.token || null,
+      });
+      const refunded = Number(res.data.refund_amount);
+      // Receipt-shaped "return slip" for the strip and printing.
+      setLastSale({
+        id: res.data.id,
+        isReturnOnly: true,
+        created_at: res.data.created_at,
+        cashier_name: user?.name,
+        items: [],
+        payments: [],
+        subtotal: 0,
+        discount_amount: 0,
+        total: 0,
+        refundOut: refunded,
+        refundMethod,
+        exchange: {
+          refund_amount: refunded,
+          exchange_amount: 0,
+          refund_method: refundMethod,
+          original_receipt_seq: returnInfo.receiptSeq,
+          items: returnInfo.items.map((i) => ({
+            product_name: i.productName, size: i.size, color: i.color,
+            quantity: i.quantity, refund_amount: i.refund,
+          })),
+        },
+      });
+      beep(true);
+      resetAfterCheckout();
+    } catch (err) {
+      if (err.response?.data?.code === 'REFUND_APPROVAL_REQUIRED') {
+        setRefundApproval(null);
+        toast.error(err.response.data.message);
+        setShowRefundApproval(true);
+      } else {
+        toast.error(err.response?.data?.message || 'Refund failed.');
+      }
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // approvalOverride / refundApprovalOverride: an approval just granted in a
+  // PIN dialog (state hasn't updated yet when checkout continues after it).
+  const handleCheckout = async (approvalOverride, refundApprovalOverride) => {
     const activeApproval = approvalOverride || approval;
-    if (items.length === 0) {
+    const activeRefundApproval = refundApprovalOverride || refundApproval;
+    if (items.length === 0 && !returnInfo) {
       toast.error('Cart is empty.');
       return;
     }
-    if (overLimit && !(activeApproval && activeApproval.percent + 0.01 >= maxCashierPercent)) {
+    if (items.length > 0 && overLimit && !(activeApproval && activeApproval.percent + 0.01 >= maxCashierPercent)) {
       setShowApproval(true);
-      return;
-    }
-    if (isSplit && Math.abs(remaining) > 0.01) {
-      toast.error(`Payments must add up to the total. Remaining: Rs. ${remaining.toLocaleString()}`);
       return;
     }
     if (shift === null) {
       toast.error('Open a shift first (banner at the top).');
       return;
     }
+    if (needsRefundPin && !(activeRefundApproval && activeRefundApproval.amount + 0.01 >= refundOut)) {
+      setShowRefundApproval(true);
+      return;
+    }
+    if (due > 0 && isSplit && Math.abs(remaining) > 0.01) {
+      toast.error(`Payments must add up to the total. Remaining: Rs. ${remaining.toLocaleString()}`);
+      return;
+    }
     if (cashLine && cashGiven < cashDue) {
       toast.error('Cash received is less than the cash amount due.');
+      return;
+    }
+    if (items.length === 0) {
+      handleReturnOnly(activeRefundApproval);
       return;
     }
     setProcessing(true);
@@ -366,11 +467,18 @@ function Sales() {
       billDiscountValue: billDiscountValue || 0,
       discountReason: discountReason || null,
       approvalToken: activeApproval?.token || null,
-      payments: payments.map((p) => ({
+      exchange: returnInfo ? {
+        originalSaleId: returnInfo.originalSaleId,
+        reason: returnInfo.reason || null,
+        items: returnItemsPayload(),
+        refundMethod: refundOut > 0 ? refundMethod : null,
+        refundApprovalToken: activeRefundApproval?.token || null,
+      } : null,
+      payments: due > 0 ? payments.map((p) => ({
         method: p.method,
-        amount: isSplit ? (Number(p.amount) || 0) : total,
+        amount: isSplit ? (Number(p.amount) || 0) : due,
         reference: null,
-      })),
+      })) : [],
     };
 
     try {
@@ -380,18 +488,12 @@ function Sales() {
         ...fullSale.data,
         cashReceived: cashLine ? cashGiven : null,
         change: cashLine ? change : null,
+        refundOut: refundOut > 0 ? refundOut : null,
+        refundMethod,
       };
       setLastSale(saleForReceipt);
       beep(true);
-      clearCart();
-      setApproval(null);
-      setDiscountReason('');
-      idempotencyKeyRef.current = crypto.randomUUID();
-      setPayments([{ method: 'cash', amount: '' }]);
-      setCashReceived('');
-      setSearchTerm('');
-      setResults([]);
-      focusSearch();
+      resetAfterCheckout();
     } catch (err) {
       if (!err.response) {
         // The request never reached the server at all (offline/unreachable) —
@@ -404,6 +506,10 @@ function Sales() {
         setApproval(null);
         toast.error(err.response.data.message);
         setShowApproval(true);
+      } else if (err.response?.data?.code === 'REFUND_APPROVAL_REQUIRED') {
+        setRefundApproval(null);
+        toast.error(err.response.data.message);
+        setShowRefundApproval(true);
       } else {
         if (/no open shift/i.test(err.response?.data?.message || '')) setShift(null);
         toast.error(err.response?.data?.message || 'Sale failed.');
@@ -416,7 +522,13 @@ function Sales() {
   // ─── Keyboard shortcuts: F2 search, F4 hold, F9 checkout ──
   useEffect(() => {
     const handleKey = (e) => {
-      if (showApproval) return; // PIN dialog open — don't checkout/hold underneath it
+      // A dialog is open — don't checkout/hold underneath it.
+      if (showApproval || showRefundApproval || showReturnPicker) return;
+      if (e.key === 'F6') {
+        e.preventDefault();
+        setShowReturnPicker(true);
+        return;
+      }
       if (e.key === 'F2') {
         e.preventDefault();
         searchInputRef.current?.focus();
@@ -452,6 +564,13 @@ function Sales() {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
           <h2 className="text-2xl font-bold text-slate-800">Sales (POS)</h2>
           <div className="relative flex items-center gap-2">
+            <button
+              onClick={() => setShowReturnPicker(true)}
+              title="Return or exchange items from an earlier bill (F6)"
+              className="flex items-center gap-2 bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg hover:bg-red-100 text-sm"
+            >
+              <FaUndo size={12} /> Return / Exchange
+            </button>
             <button
               onClick={handleHold}
               title="Hold sale (F4)"
@@ -489,7 +608,7 @@ function Sales() {
           </div>
         </div>
         <p className="text-xs text-slate-400 mb-3">
-          F2 search · F8 cash · F4 hold · F9 checkout · scan <span className="font-mono">3*code</span> for qty 3
+          F2 search · F8 cash · F4 hold · F6 return · F9 checkout · scan <span className="font-mono">3*code</span> for qty 3
         </p>
 
         {shift === null && (
@@ -591,12 +710,13 @@ function Sales() {
         {/* Last sale — stays visible (with the change to hand back) while the
             next customer is already being scanned. */}
         {/* Once the next customer's items are going in, shrink to one line. */}
-        {lastSale && items.length > 0 && (
+        {lastSale && cartBusy && (
           <div className="mx-3 mt-2 rounded border border-green-200 bg-green-50 px-3 py-1.5 shrink-0 flex items-center gap-2 text-xs text-green-800">
             <FaCheckCircle className="text-green-600 shrink-0" />
             <span className="flex-1 truncate">
-              Last: {lastSale.receipt_seq ? `RF-${String(lastSale.receipt_seq).padStart(4, '0')}` : 'sale'}
+              Last: {lastSale.isReturnOnly ? 'refund' : lastSale.receipt_seq ? `RF-${String(lastSale.receipt_seq).padStart(4, '0')}` : 'sale'}
               {lastSale.change != null && <> · change <strong>Rs. {Number(lastSale.change).toLocaleString()}</strong></>}
+              {lastSale.refundOut > 0 && <> · refund <strong>Rs. {Number(lastSale.refundOut).toLocaleString()}</strong></>}
             </span>
             <button onClick={() => { handlePrint(); focusSearch(); }} title="Print last receipt" className="hover:text-green-950">
               <FaPrint />
@@ -606,14 +726,21 @@ function Sales() {
             </button>
           </div>
         )}
-        {lastSale && items.length === 0 && (
+        {lastSale && !cartBusy && (
           <div className="mx-3 mt-3 rounded-lg border border-green-200 bg-green-50 p-3 shrink-0">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 text-sm text-green-800">
                 <FaCheckCircle className="text-green-600" />
                 <span className="font-medium">
-                  {lastSale.receipt_seq ? `RF-${String(lastSale.receipt_seq).padStart(4, '0')}` : 'Sale'} done ·
-                  Rs. {Number(lastSale.total).toLocaleString()}
+                  {lastSale.isReturnOnly ? (
+                    <>Refund done (RF-{String(lastSale.exchange.original_receipt_seq).padStart(4, '0')})</>
+                  ) : (
+                    <>
+                      {lastSale.receipt_seq ? `RF-${String(lastSale.receipt_seq).padStart(4, '0')}` : 'Sale'} done ·
+                      Rs. {Number(lastSale.total).toLocaleString()}
+                      {lastSale.exchange && ' (exchange)'}
+                    </>
+                  )}
                 </span>
               </div>
               <button onClick={() => setLastSale(null)} title="Dismiss" className="text-green-700/60 hover:text-green-800">
@@ -623,6 +750,12 @@ function Sales() {
             {lastSale.change != null && (
               <p className="text-2xl font-bold text-green-700 mt-1">
                 Change: Rs. {Number(lastSale.change).toLocaleString()}
+              </p>
+            )}
+            {lastSale.refundOut > 0 && (
+              <p className="text-2xl font-bold text-red-600 mt-1">
+                Give back: Rs. {Number(lastSale.refundOut).toLocaleString()}
+                <span className="text-sm font-medium ml-1">({lastSale.refundMethod})</span>
               </p>
             )}
             <div className="flex items-center justify-between gap-2 mt-2">
@@ -641,7 +774,34 @@ function Sales() {
         )}
 
         <div className="flex-1 min-h-0 overflow-y-auto px-3 py-1">
-          {items.length === 0 ? (
+          {/* Items coming back (exchange / refund) */}
+          {returnInfo && (
+            <div className="my-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <p className="text-xs font-semibold text-red-700 flex items-center gap-1.5">
+                  <FaUndo size={10} /> Return from RF-{String(returnInfo.receiptSeq).padStart(4, '0')}
+                  {returnInfo.reason && <span className="font-normal">· {returnInfo.reason}</span>}
+                </p>
+                <button
+                  onClick={() => { setReturnInfo(null); setRefundApproval(null); focusSearch(); }}
+                  title="Cancel the return"
+                  className="text-red-400 hover:text-red-700"
+                >
+                  <FaTimes size={11} />
+                </button>
+              </div>
+              {returnInfo.items.map((r) => (
+                <div key={r.saleItemId} className="flex justify-between text-xs text-red-800 py-0.5">
+                  <span className="truncate">{r.productName} ({r.size}/{r.color}) × {r.quantity}</span>
+                  <span className="shrink-0 font-medium">−Rs. {r.refund.toLocaleString()}</span>
+                </div>
+              ))}
+              {items.length === 0 && (
+                <p className="text-[11px] text-red-600/80 mt-1">Scan the new items for an exchange, or complete as a refund.</p>
+              )}
+            </div>
+          )}
+          {items.length === 0 && !returnInfo ? (
             <p className="text-slate-400 text-sm text-center mt-8">Cart is empty. Scan or search to add products.</p>
           ) : (
             items.map((item) => {
@@ -794,17 +954,61 @@ function Sales() {
               </p>
             </div>
           )}
-          <div className="flex justify-between items-baseline">
-            <span className="font-bold text-lg">Total</span>
-            <span className="text-right">
-              {totalDiscount > 0 && (
-                <span className="text-xs text-green-600 mr-2">saved Rs. {totalDiscount.toLocaleString()}</span>
-              )}
-              <span className="font-bold text-2xl text-blue-600">Rs. {total.toLocaleString()}</span>
-            </span>
-          </div>
+          {returnInfo ? (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">New items</span>
+                <span>Rs. {total.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm text-red-600">
+                <span>Returned items credit</span>
+                <span>−Rs. {returnCredit.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-baseline">
+                <span className="font-bold text-lg">{refundOut > 0 ? 'Refund to customer' : 'Customer pays'}</span>
+                <span className={`font-bold text-2xl ${refundOut > 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                  Rs. {(refundOut > 0 ? refundOut : due).toLocaleString()}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-between items-baseline">
+              <span className="font-bold text-lg">Total</span>
+              <span className="text-right">
+                {totalDiscount > 0 && (
+                  <span className="text-xs text-green-600 mr-2">saved Rs. {totalDiscount.toLocaleString()}</span>
+                )}
+                <span className="font-bold text-2xl text-blue-600">Rs. {total.toLocaleString()}</span>
+              </span>
+            </div>
+          )}
 
-          {!isSplit ? (
+          {refundOut > 0 && (
+            <div>
+              <div className="flex gap-1.5 items-center">
+                <span className="text-xs text-slate-600 mr-1">Give back by</span>
+                {['cash', 'card'].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => { setRefundMethod(m); focusSearch(); }}
+                    className={`flex-1 py-1.5 text-xs rounded capitalize ${refundMethod === m ? 'bg-red-600 text-white' : 'bg-slate-50 text-slate-700 border border-slate-200'}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              {needsRefundPin && (
+                <p className={`text-[11px] mt-1 flex items-center gap-1 ${refundApproval && refundApproval.amount + 0.01 >= refundOut ? 'text-slate-500' : 'text-red-600'}`}>
+                  <FaUserShield />
+                  {refundApproval && refundApproval.amount + 0.01 >= refundOut
+                    ? `Cash refund approved by ${refundApproval.approverName}`
+                    : 'Cash refund — manager PIN needed at checkout.'}
+                </p>
+              )}
+            </div>
+          )}
+
+          {due === 0 ? null : !isSplit ? (
             <div className="flex gap-1.5 items-center">
               {PAYMENT_METHODS.map((method) => (
                 <button
@@ -894,25 +1098,70 @@ function Sales() {
 
           <button
             onClick={() => handleCheckout()}
-            disabled={processing || items.length === 0}
-            className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50"
+            disabled={processing || !cartBusy}
+            className={`w-full text-white py-3 rounded-lg font-medium disabled:opacity-50 ${refundOut > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
           >
-            {processing ? 'Processing...' : overLimit && !approvalCovers ? 'Get Approval & Complete (F9)' : 'Complete Sale (F9)'}
+            {processing ? 'Processing...'
+              : (overLimit && !approvalCovers) || (needsRefundPin && !(refundApproval && refundApproval.amount + 0.01 >= refundOut))
+                ? 'Get Approval & Complete (F9)'
+                : !returnInfo ? 'Complete Sale (F9)'
+                : items.length === 0 ? `Refund Rs. ${refundOut.toLocaleString()} (F9)`
+                : 'Complete Exchange (F9)'}
           </button>
         </div>
       </div>
 
-      {showApproval && (
+      {showApproval && (() => {
+        // Rounded up so the server's own calculation is always covered.
+        const percent = Math.ceil(maxCashierPercent * 10) / 10;
+        return (
+          <ApprovalModal
+            approvers={discountSettings.approvers}
+            message={<>This sale has a <strong>{percent}%</strong> discount, over the cashier limit.</>}
+            request={async (approverId, pin) => {
+              const res = await saleService.approveDiscount({
+                approverId, pin, percent, idempotencyKey: idempotencyKeyRef.current,
+              });
+              return { ...res.data, percent };
+            }}
+            onClose={() => { setShowApproval(false); focusSearch(); }}
+            onApproved={(granted) => {
+              setApproval(granted);
+              setShowApproval(false);
+              handleCheckout(granted);
+            }}
+          />
+        );
+      })()}
+
+      {showRefundApproval && returnInfo && (
         <ApprovalModal
           approvers={discountSettings.approvers}
-          // Rounded up so the server's own calculation is always covered.
-          percent={Math.ceil(maxCashierPercent * 10) / 10}
-          getIdempotencyKey={() => idempotencyKeyRef.current}
-          onClose={() => { setShowApproval(false); focusSearch(); }}
+          message={<>Cash refund of <strong>Rs. {refundOut.toLocaleString()}</strong> to the customer needs a manager.</>}
+          request={async (approverId, pin) => {
+            const res = await returnService.approveRefund({
+              approverId, pin, originalSaleId: returnInfo.originalSaleId, amount: refundOut,
+            });
+            return { ...res.data, amount: refundOut };
+          }}
+          onClose={() => { setShowRefundApproval(false); focusSearch(); }}
           onApproved={(granted) => {
-            setApproval(granted);
-            setShowApproval(false);
-            handleCheckout(granted);
+            setRefundApproval(granted);
+            setShowRefundApproval(false);
+            handleCheckout(null, granted);
+          }}
+        />
+      )}
+
+      {showReturnPicker && (
+        <ReturnPickerModal
+          onClose={() => { setShowReturnPicker(false); focusSearch(); }}
+          onAdd={(info) => {
+            setReturnInfo(info);
+            setRefundApproval(null);
+            setShowReturnPicker(false);
+            setLastSale(null);
+            focusSearch();
           }}
         />
       )}
@@ -989,8 +1238,9 @@ function DiscountTypeToggle({ value, onChange }) {
   );
 }
 
-// ─── Manager PIN approval for an over-limit discount ──
-function ApprovalModal({ approvers, percent, getIdempotencyKey, onClose, onApproved }) {
+// ─── Manager PIN approval (over-limit discount, cashier cash refund) ──
+// request(approverId, pin) asks the server and resolves to { token, approverName }.
+function ApprovalModal({ approvers, message, request, onClose, onApproved }) {
   const [approverId, setApproverId] = useState(approvers[0]?.id || '');
   const [pin, setPin] = useState('');
   const [checking, setChecking] = useState(false);
@@ -1000,11 +1250,9 @@ function ApprovalModal({ approvers, percent, getIdempotencyKey, onClose, onAppro
     if (!approverId || pin.length < 4) return;
     setChecking(true);
     try {
-      const res = await saleService.approveDiscount({
-        approverId, pin, percent, idempotencyKey: getIdempotencyKey(),
-      });
-      toast.success(`Approved by ${res.data.approverName}.`);
-      onApproved({ token: res.data.token, approverName: res.data.approverName, percent });
+      const granted = await request(approverId, pin);
+      toast.success(`Approved by ${granted.approverName}.`);
+      onApproved(granted);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Approval failed.');
       setPin('');
@@ -1018,9 +1266,7 @@ function ApprovalModal({ approvers, percent, getIdempotencyKey, onClose, onAppro
       <h3 id="approval-modal-title" className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2">
         <FaUserShield /> Manager approval
       </h3>
-      <p className="text-sm text-slate-500 mb-4">
-        This sale has a <strong>{percent}%</strong> discount, over the cashier limit.
-      </p>
+      <p className="text-sm text-slate-500 mb-4">{message}</p>
       {approvers.length === 0 ? (
         <p className="text-sm text-red-600 mb-4">
           No manager has an approval PIN yet. An admin can set one in Staff → PIN.
@@ -1059,6 +1305,171 @@ function ApprovalModal({ approvers, percent, getIdempotencyKey, onClose, onAppro
             </button>
           </div>
         </form>
+      )}
+    </Modal>
+  );
+}
+
+// ─── Pick items to return from an earlier bill ─────
+function ReturnPickerModal({ onClose, onAdd }) {
+  const [receipt, setReceipt] = useState('');
+  const [sale, setSale] = useState(null);
+  const [qty, setQty] = useState({}); // saleItemId → qty to return
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const lookup = async (e) => {
+    e.preventDefault();
+    const seq = receipt.replace(/[^0-9]/g, '');
+    if (!seq) return;
+    setLoading(true);
+    setSale(null);
+    setQty({});
+    try {
+      const res = await saleService.getByReceiptSeq(seq);
+      if (res.data.status === 'held') {
+        toast.error('That bill was never completed.');
+        return;
+      }
+      setSale(res.data);
+      if (res.data.items.every((i) => remainingQty(i) <= 0)) {
+        toast('Everything on this bill was already returned.', { icon: 'ℹ️' });
+      }
+    } catch (err) {
+      toast.error(err.response?.status === 404 ? 'Receipt not found. Check the number.' : 'Lookup failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setItemQty = (item, value) => {
+    const q = Math.max(0, Math.min(Math.floor(Number(value)) || 0, remainingQty(item)));
+    setQty({ ...qty, [item.id]: q });
+  };
+
+  const picked = sale ? sale.items.filter((i) => (qty[i.id] || 0) > 0) : [];
+  const credit = picked.reduce((sum, i) => sum + refundFor(i, qty[i.id]), 0);
+
+  const handleAdd = () => {
+    if (picked.length === 0) {
+      toast.error('Pick at least one item to return.');
+      return;
+    }
+    onAdd({
+      originalSaleId: sale.id,
+      receiptSeq: sale.receipt_seq,
+      reason,
+      items: picked.map((i) => ({
+        saleItemId: i.id,
+        productName: i.product_name,
+        size: i.size,
+        color: i.color,
+        quantity: qty[i.id],
+        refund: refundFor(i, qty[i.id]),
+      })),
+    });
+  };
+
+  return (
+    <Modal onClose={onClose} titleId="return-modal-title" maxWidth="max-w-lg" scrollable>
+      <h3 id="return-modal-title" className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2">
+        <FaUndo /> Return / Exchange
+      </h3>
+      <p className="text-sm text-slate-500 mb-4">
+        Enter the receipt number from the customer's bill, then pick what's coming back.
+      </p>
+
+      <form onSubmit={lookup} className="flex gap-2 mb-4">
+        <input
+          value={receipt}
+          onChange={(e) => setReceipt(e.target.value)}
+          placeholder="Receipt no. e.g. RF-0012"
+          aria-label="Receipt number"
+          autoFocus
+          className="flex-1 px-3 py-2 border border-slate-300 rounded"
+        />
+        <button type="submit" disabled={loading} className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50">
+          {loading ? 'Finding...' : 'Find bill'}
+        </button>
+      </form>
+
+      {sale && (
+        <>
+          <p className="text-xs text-slate-500 mb-2">
+            RF-{String(sale.receipt_seq).padStart(4, '0')} · {new Date(sale.created_at).toLocaleString()} ·
+            Rs. {Number(sale.total).toLocaleString()} · {sale.cashier_name}
+          </p>
+          <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 mb-3">
+            {sale.items.map((item) => {
+              const left = remainingQty(item);
+              return (
+                <div key={item.id} className={`flex items-center gap-3 px-3 py-2 text-sm ${left <= 0 ? 'opacity-50' : ''}`}>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-800 truncate">{item.product_name}</p>
+                    <p className="text-xs text-slate-500">
+                      {item.size} · {item.color} · paid Rs. {paidPerUnit(item).toLocaleString(undefined, { maximumFractionDigits: 2 })} each
+                      {item.already_returned > 0 && <span className="text-amber-600"> · {item.already_returned} already returned</span>}
+                    </p>
+                  </div>
+                  {left <= 0 ? (
+                    <span className="text-xs text-slate-400">returned</span>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max={left}
+                        value={qty[item.id] || 0}
+                        onChange={(e) => setItemQty(item, e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        aria-label={`Return quantity for ${item.product_name}`}
+                        className="w-14 px-2 py-1 border border-slate-300 rounded text-center"
+                      />
+                      <span className="text-xs text-slate-400">/ {left}</span>
+                      <button
+                        type="button"
+                        onClick={() => setItemQty(item, left)}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        all
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap gap-1 mb-4">
+            {RETURN_REASONS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setReason(reason === r ? '' : r)}
+                className={`px-2 py-0.5 rounded-full text-xs border ${reason === r ? 'bg-yellow-500 border-yellow-500 text-black' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-slate-600">
+              Credit: <strong className="text-red-600">Rs. {credit.toLocaleString()}</strong>
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
+              <button
+                type="button"
+                onClick={handleAdd}
+                disabled={picked.length === 0}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+              >
+                Add to cart
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </Modal>
   );
