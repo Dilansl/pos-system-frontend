@@ -1,18 +1,39 @@
 import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
-import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes, FaUserShield } from 'react-icons/fa';
+import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes, FaUserShield, FaCashRegister } from 'react-icons/fa';
 import productService from '../services/product.service';
 import saleService from '../services/sale.service';
 import settingsService from '../services/settings.service';
+import shiftService from '../services/shift.service';
 import useCartStore from '../store/cartStore';
 import useAuthStore from '../store/authStore';
 import Receipt from '../components/sales/Receipt';
 import Modal from '../components/common/Modal';
 import offlineQueue from '../utils/offlineQueue';
+import { compareVariants } from '../utils/sizeSort';
+import { beep } from '../utils/beep';
 
 const PAYMENT_METHODS = ['cash', 'card', 'bank_transfer'];
 const DISCOUNT_REASONS = ['Bargain', 'Regular customer', 'Damaged / defect', 'Staff purchase', 'Other'];
+const AUTO_PRINT_KEY = 'pos.autoPrintReceipt';
+
+// Quick-cash buttons: the next round notes at or above the amount due
+// (e.g. due 2,640 → 3,000 · 5,000), so the common "customer hands over a
+// note" case is one click.
+const quickCashAmounts = (due) => {
+  if (due <= 0) return [];
+  const amounts = new Set();
+  for (const step of [500, 1000, 5000]) {
+    const rounded = Math.ceil(due / step) * step;
+    if (rounded > due) amounts.add(rounded);
+  }
+  return [...amounts].sort((a, b) => a - b).slice(0, 3);
+};
+
+const readAutoPrint = () => {
+  try { return localStorage.getItem(AUTO_PRINT_KEY) === '1'; } catch { return false; }
+};
 
 function Sales() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,7 +45,13 @@ function Sales() {
   const [payments, setPayments] = useState([{ method: 'cash', amount: '' }]);
   const [cashReceived, setCashReceived] = useState('');
   const [processing, setProcessing] = useState(false);
-  const [completedSale, setCompletedSale] = useState(null);
+  // The sale just finished — shown as a strip above the cart (with the change
+  // to give back) while the cashier already scans the next customer.
+  const [lastSale, setLastSale] = useState(null);
+  const [autoPrint, setAutoPrint] = useState(readAutoPrint);
+  // undefined = still checking, null = no open shift
+  const [shift, setShift] = useState(undefined);
+  const [flashId, setFlashId] = useState(null);
   const [showHeldList, setShowHeldList] = useState(false);
   // Discount control: per-role limits + who can approve (from settings), the
   // manager approval for this checkout (if any), and the cashier's reason.
@@ -36,21 +63,29 @@ function Sales() {
 
   const receiptRef = useRef();
   const searchInputRef = useRef(null);
+  const cashInputRef = useRef(null);
+  const flashTimerRef = useRef(null);
   // Stays the same across retries of one checkout attempt (network timeout, etc.)
   // so a resubmission is recognized server-side as a replay, not a new sale.
   // Only regenerated after a sale actually completes or the cart is cleared.
   const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   const {
-    items, addItem, increaseQty, decreaseQty, removeItem,
+    items, addItem, increaseQty, decreaseQty, removeItem, setQty,
     setItemDiscountType, setItemDiscountValue,
     getItemDiscount, getItemLineTotal,
-    getItemPromoDiscount, getItemBargainDiscount,
+    getItemPromoDiscount,
     billDiscountType, billDiscountValue, setBillDiscountType, setBillDiscountValue,
     getBillDiscount, getItemCashierPercent, getMaxCashierPercent,
     clearCart, getSubtotal, getTotal, getTotalDiscount, getItemCount,
     heldCarts, holdCart, resumeCart, discardHeldCart,
   } = useCartStore();
+
+  useEffect(() => {
+    shiftService.getCurrent()
+      .then((res) => setShift(res.data || null))
+      .catch(() => setShift(null));
+  }, []);
 
   useEffect(() => {
     settingsService.getDiscount()
@@ -68,6 +103,18 @@ function Sales() {
   const handlePrint = useReactToPrint({
     contentRef: receiptRef,
   });
+
+  // Auto-print once the new receipt has rendered.
+  useEffect(() => {
+    if (lastSale && autoPrint) handlePrint();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSale?.id]);
+
+  const toggleAutoPrint = () => {
+    const next = !autoPrint;
+    setAutoPrint(next);
+    try { localStorage.setItem(AUTO_PRINT_KEY, next ? '1' : '0'); } catch { /* per-device pref only */ }
+  };
 
   // Keeps the cursor in the search box so the next barcode scan lands there —
   // otherwise the scanner's Enter "clicks" whatever button was last clicked.
@@ -88,7 +135,7 @@ function Sales() {
     setSearching(true);
     try {
       const res = await productService.search(term);
-      if (seq === searchSeqRef.current) setResults(res.data);
+      if (seq === searchSeqRef.current) setResults([...res.data].sort(compareVariants));
     } catch {
       if (seq === searchSeqRef.current) toast.error('Search failed.');
     } finally {
@@ -119,18 +166,27 @@ function Sales() {
 
   const handleBarcodeScan = async (e) => {
     if (e.key !== 'Enter') return;
-    const code = searchTerm.trim();
+    let code = searchTerm.trim();
     if (!code) return;
     cancelPendingSearch();
 
+    // "3*RF0001" = add 3 of that barcode in one go.
+    let qty = 1;
+    const multi = code.match(/^(\d{1,3})\s*[*xX]\s*(.+)$/);
+    if (multi) {
+      qty = Number(multi[1]) || 1;
+      code = multi[2].trim();
+    }
+
     try {
       const res = await productService.getByBarcode(code);
-      handleAddToCart(res.data);
+      handleAddToCart(res.data, qty);
       setSearchTerm('');
       setResults([]);
       return;
     } catch (err) {
       if (err.response?.status !== 404) {
+        beep(false);
         toast.error(err.response?.data?.message || 'Lookup failed.');
         return;
       }
@@ -143,13 +199,14 @@ function Sales() {
       const res = await productService.search(code);
       if (seq !== searchSeqRef.current) return;
       if (res.data.length === 1) {
-        handleAddToCart(res.data[0]);
+        handleAddToCart(res.data[0], qty);
         setSearchTerm('');
         setResults([]);
       } else if (res.data.length > 1) {
-        setResults(res.data);
+        setResults([...res.data].sort(compareVariants));
         toast('Several matches — click the right one.', { icon: '👆' });
       } else {
+        beep(false);
         toast.error('No product or barcode matches that.');
         setSearchTerm('');
         setResults([]);
@@ -166,13 +223,34 @@ function Sales() {
     focusSearch();
   };
 
-  const handleAddToCart = (product) => {
+  // Beep + briefly highlight the cart row instead of a toast per scan.
+  const flashRow = (variantId) => {
+    setFlashId(variantId);
+    clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFlashId(null), 700);
+    requestAnimationFrame(() => {
+      document.getElementById(`cart-row-${variantId}`)?.scrollIntoView({ block: 'nearest' });
+    });
+  };
+
+  useEffect(() => () => clearTimeout(flashTimerRef.current), []);
+
+  const handleAddToCart = (product, qty = 1) => {
     if (product.stock_quantity < 1) {
-      toast.error('Out of stock.');
+      beep(false);
+      toast.error(`${product.product_name} is out of stock.`);
+      focusSearch();
       return;
     }
-    addItem(product);
-    toast.success(`${product.product_name} added.`);
+    const added = addItem(product, qty);
+    if (added === 0) {
+      beep(false);
+      toast.error(`Only ${product.stock_quantity} of ${product.product_name} in stock.`);
+    } else {
+      beep(true);
+      flashRow(product.id);
+      if (added < qty) toast(`Only ${added} more in stock — added ${added}.`, { icon: '⚠️' });
+    }
     focusSearch();
   };
 
@@ -185,7 +263,9 @@ function Sales() {
   const remaining = Math.round((total - paymentsTotal) * 100) / 100;
   const cashLine = payments.find((p) => p.method === 'cash');
   const cashDue = isSplit ? (Number(cashLine?.amount) || 0) : total;
-  const change = Number(cashReceived) - cashDue;
+  // Empty "cash received" = exact money; no typing needed.
+  const cashGiven = cashReceived === '' ? cashDue : Number(cashReceived);
+  const change = cashGiven - cashDue;
 
   const setSinglePaymentMethod = (method) => setPayments([{ method, amount: '' }]);
 
@@ -241,25 +321,6 @@ function Sales() {
     toast.success('Held sale resumed.');
   };
 
-  // ─── Keyboard shortcuts: F2 search, F4 hold, F9 checkout ──
-  useEffect(() => {
-    const handleKey = (e) => {
-      if (showApproval) return; // PIN dialog open — don't checkout/hold underneath it
-      if (e.key === 'F2') {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      } else if (e.key === 'F4') {
-        e.preventDefault();
-        handleHold();
-      } else if (e.key === 'F9') {
-        e.preventDefault();
-        handleCheckout();
-      }
-    };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  });
-
   // approvalOverride: the approval just granted in the PIN dialog (state
   // hasn't updated yet when checkout continues straight after it).
   const handleCheckout = async (approvalOverride) => {
@@ -276,7 +337,11 @@ function Sales() {
       toast.error(`Payments must add up to the total. Remaining: Rs. ${remaining.toLocaleString()}`);
       return;
     }
-    if (cashLine && Number(cashReceived) < cashDue) {
+    if (shift === null) {
+      toast.error('Open a shift first (banner at the top).');
+      return;
+    }
+    if (cashLine && cashGiven < cashDue) {
       toast.error('Cash received is less than the cash amount due.');
       return;
     }
@@ -313,11 +378,11 @@ function Sales() {
       const fullSale = await saleService.getById(res.data.id);
       const saleForReceipt = {
         ...fullSale.data,
-        cashReceived: cashLine ? Number(cashReceived) : null,
+        cashReceived: cashLine ? cashGiven : null,
         change: cashLine ? change : null,
       };
-      setCompletedSale(saleForReceipt);
-      toast.success('Sale completed!');
+      setLastSale(saleForReceipt);
+      beep(true);
       clearCart();
       setApproval(null);
       setDiscountReason('');
@@ -326,6 +391,7 @@ function Sales() {
       setCashReceived('');
       setSearchTerm('');
       setResults([]);
+      focusSearch();
     } catch (err) {
       if (!err.response) {
         // The request never reached the server at all (offline/unreachable) —
@@ -339,6 +405,7 @@ function Sales() {
         toast.error(err.response.data.message);
         setShowApproval(true);
       } else {
+        if (/no open shift/i.test(err.response?.data?.message || '')) setShift(null);
         toast.error(err.response?.data?.message || 'Sale failed.');
       }
     } finally {
@@ -346,36 +413,40 @@ function Sales() {
     }
   };
 
-  const startNewSale = () => setCompletedSale(null);
+  // ─── Keyboard shortcuts: F2 search, F4 hold, F9 checkout ──
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (showApproval) return; // PIN dialog open — don't checkout/hold underneath it
+      if (e.key === 'F2') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'F8') {
+        e.preventDefault();
+        cashInputRef.current?.focus();
+        cashInputRef.current?.select();
+      } else if (e.key === 'F4') {
+        e.preventDefault();
+        handleHold();
+      } else if (e.key === 'F9') {
+        e.preventDefault();
+        handleCheckout();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  });
 
   const subtotal = getSubtotal();
   const totalDiscount = getTotalDiscount();
 
-  // ─── SUCCESS / RECEIPT VIEW ───────────────────────
-  if (completedSale) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen p-6">
-        <FaCheckCircle className="text-green-500 text-6xl mb-4" />
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">Sale Completed!</h2>
-        <p className="text-slate-500 mb-6">Total: Rs. {Number(completedSale.total).toLocaleString()}</p>
-        <div style={{ display: 'none' }}>
-          <Receipt ref={receiptRef} sale={completedSale} />
-        </div>
-        <div className="flex gap-3">
-          <button onClick={handlePrint} className="flex items-center gap-2 bg-yellow-500 text-black px-6 py-3 rounded-lg hover:bg-yellow-600">
-            <FaPrint /> Print Receipt
-          </button>
-          <button onClick={startNewSale} className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700">
-            New Sale
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── MAIN POS VIEW ────────────────────────────────
+  // ─── POS VIEW ─────────────────────────────────────
   return (
     <div className="flex h-screen">
+      {/* Receipt of the last sale, rendered off-screen for printing */}
+      <div style={{ display: 'none' }}>
+        <Receipt ref={receiptRef} sale={lastSale} />
+      </div>
+
       {/* LEFT — product search */}
       <div className="flex-1 p-6 overflow-y-auto">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
@@ -417,7 +488,16 @@ function Sales() {
             )}
           </div>
         </div>
-        <p className="text-xs text-slate-400 mb-3">F2 search · F4 hold · F9 checkout</p>
+        <p className="text-xs text-slate-400 mb-3">
+          F2 search · F8 cash · F4 hold · F9 checkout · scan <span className="font-mono">3*code</span> for qty 3
+        </p>
+
+        {shift === null && (
+          <OpenShiftBanner
+            onOpened={(opened) => { setShift(opened); focusSearch(); }}
+          />
+        )}
+
         <div className="flex gap-2 mb-4">
           <div className="relative flex-1">
             <FaSearch className="absolute left-3 top-3.5 text-slate-400" />
@@ -427,7 +507,7 @@ function Sales() {
               value={searchTerm}
               onChange={handleSearch}
               onKeyDown={handleBarcodeScan}
-              placeholder="Search by name, barcode, size, colour..."
+              placeholder="Scan barcode or search by name, size, colour..."
               className="w-full pl-10 pr-3 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/60 focus:border-yellow-500"
               autoFocus
             />
@@ -502,73 +582,144 @@ function Sales() {
       </div>
 
       {/* RIGHT — cart */}
-      <div className="w-96 bg-white border-l border-slate-200 flex flex-col">
-        <div className="p-4 border-b border-slate-200 flex items-center gap-2">
+      <div className="w-96 bg-white border-l border-slate-200 flex flex-col h-screen">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2 shrink-0">
           <FaShoppingCart className="text-blue-600" />
           <h3 className="font-bold text-slate-800">Cart ({getItemCount()})</h3>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
+
+        {/* Last sale — stays visible (with the change to hand back) while the
+            next customer is already being scanned. */}
+        {/* Once the next customer's items are going in, shrink to one line. */}
+        {lastSale && items.length > 0 && (
+          <div className="mx-3 mt-2 rounded border border-green-200 bg-green-50 px-3 py-1.5 shrink-0 flex items-center gap-2 text-xs text-green-800">
+            <FaCheckCircle className="text-green-600 shrink-0" />
+            <span className="flex-1 truncate">
+              Last: {lastSale.receipt_seq ? `RF-${String(lastSale.receipt_seq).padStart(4, '0')}` : 'sale'}
+              {lastSale.change != null && <> · change <strong>Rs. {Number(lastSale.change).toLocaleString()}</strong></>}
+            </span>
+            <button onClick={() => { handlePrint(); focusSearch(); }} title="Print last receipt" className="hover:text-green-950">
+              <FaPrint />
+            </button>
+            <button onClick={() => setLastSale(null)} title="Dismiss" className="text-green-700/60 hover:text-green-800">
+              <FaTimes size={11} />
+            </button>
+          </div>
+        )}
+        {lastSale && items.length === 0 && (
+          <div className="mx-3 mt-3 rounded-lg border border-green-200 bg-green-50 p-3 shrink-0">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm text-green-800">
+                <FaCheckCircle className="text-green-600" />
+                <span className="font-medium">
+                  {lastSale.receipt_seq ? `RF-${String(lastSale.receipt_seq).padStart(4, '0')}` : 'Sale'} done ·
+                  Rs. {Number(lastSale.total).toLocaleString()}
+                </span>
+              </div>
+              <button onClick={() => setLastSale(null)} title="Dismiss" className="text-green-700/60 hover:text-green-800">
+                <FaTimes size={12} />
+              </button>
+            </div>
+            {lastSale.change != null && (
+              <p className="text-2xl font-bold text-green-700 mt-1">
+                Change: Rs. {Number(lastSale.change).toLocaleString()}
+              </p>
+            )}
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <button
+                onClick={() => { handlePrint(); focusSearch(); }}
+                className="flex items-center gap-1.5 bg-yellow-500 text-black px-3 py-1.5 rounded text-sm hover:bg-yellow-600"
+              >
+                <FaPrint size={12} /> Print receipt
+              </button>
+              <label className="flex items-center gap-1.5 text-xs text-green-800 cursor-pointer">
+                <input type="checkbox" checked={autoPrint} onChange={toggleAutoPrint} />
+                Auto-print every sale
+              </label>
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-1">
           {items.length === 0 ? (
-            <p className="text-slate-400 text-sm text-center mt-8">Cart is empty. Search and add products.</p>
+            <p className="text-slate-400 text-sm text-center mt-8">Cart is empty. Scan or search to add products.</p>
           ) : (
             items.map((item) => {
               const itemDiscount = getItemDiscount(item);
               const lineTotal = getItemLineTotal(item);
               const promoDiscount = getItemPromoDiscount(item);
-              const bargainDiscount = getItemBargainDiscount(item);
               const hasPromo = item.promoType && item.promoValue > 0;
               const linePercent = getItemCashierPercent(item);
               const lineOverLimit = linePercent > myLimit + 0.01;
               return (
-                <div key={item.variantId} className="mb-3 pb-3 border-b border-slate-100">
-                  <div className="flex justify-between">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium text-sm text-slate-800">{item.productName}</p>
-                      {hasPromo && (
-                        <span className="text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded">
-                          PROMO {item.promoType === 'percent' ? `${item.promoValue}%` : `Rs.${item.promoValue}`}
-                        </span>
-                      )}
+                <div
+                  key={item.variantId}
+                  id={`cart-row-${item.variantId}`}
+                  className={`py-2 px-1 border-b border-slate-100 rounded transition-colors duration-500 ${flashId === item.variantId ? 'bg-yellow-100' : ''}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-800 truncate">
+                        {item.productName}
+                        {hasPromo && (
+                          <span className="ml-1 text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200 px-1 rounded">
+                            {item.promoType === 'percent' ? `-${item.promoValue}%` : `-Rs.${item.promoValue}`}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {item.size} · {item.color} · Rs. {item.sellPrice.toLocaleString()}
+                      </p>
                     </div>
-                    <button onClick={() => { removeItem(item.variantId); focusSearch(); }} className="text-red-400 hover:text-red-600">
-                      <FaTrash size={12} />
-                    </button>
-                  </div>
-                  <p className="text-xs text-slate-500">{item.size} · {item.color}</p>
-
-                  <div className="flex justify-between items-center mt-2">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => { decreaseQty(item.variantId); focusSearch(); }} className="w-6 h-6 bg-slate-200 rounded flex items-center justify-center hover:bg-slate-300">
-                        <FaMinus size={10} />
-                      </button>
-                      <span className="text-sm w-6 text-center">{item.quantity}</span>
-                      <button onClick={() => { increaseQty(item.variantId); focusSearch(); }} className="w-6 h-6 bg-slate-200 rounded flex items-center justify-center hover:bg-slate-300">
-                        <FaPlus size={10} />
-                      </button>
-                    </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       {itemDiscount > 0 && (
-                        <span className="text-xs text-slate-400 line-through block">
+                        <span className="text-[11px] text-slate-400 line-through block leading-tight">
                           Rs. {(item.sellPrice * item.quantity).toLocaleString()}
                         </span>
                       )}
-                      <span className="font-medium text-sm">Rs. {lineTotal.toLocaleString()}</span>
+                      <span className="font-semibold text-sm">Rs. {lineTotal.toLocaleString()}</span>
                     </div>
+                    <button
+                      onClick={() => { removeItem(item.variantId); focusSearch(); }}
+                      title="Remove"
+                      className="text-red-400 hover:text-red-600 pt-0.5"
+                    >
+                      <FaTrash size={11} />
+                    </button>
                   </div>
 
-                  {/* Promo line (auto-applied, read-only) */}
-                  {promoDiscount > 0 && (
-                    <div className="flex justify-between items-center mt-1.5 text-xs">
-                      <span className="text-green-600">
-                        Promo ({item.promoType === 'percent' ? `${item.promoValue}%` : `Rs.${item.promoValue}/unit`})
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <button
+                      onClick={() => { decreaseQty(item.variantId); focusSearch(); }}
+                      className="w-6 h-6 bg-slate-200 rounded flex items-center justify-center hover:bg-slate-300"
+                      aria-label="Decrease quantity"
+                    >
+                      <FaMinus size={9} />
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      max={item.stockQuantity}
+                      value={item.quantity}
+                      onChange={(e) => setQty(item.variantId, e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      onKeyDown={(e) => { if (e.key === 'Enter') focusSearch(); }}
+                      aria-label={`Quantity of ${item.productName}`}
+                      className="w-11 h-6 text-center text-sm border border-slate-300 rounded [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <button
+                      onClick={() => { increaseQty(item.variantId); focusSearch(); }}
+                      className="w-6 h-6 bg-slate-200 rounded flex items-center justify-center hover:bg-slate-300"
+                      aria-label="Increase quantity"
+                    >
+                      <FaPlus size={9} />
+                    </button>
+                    <span className="flex-1" />
+                    {promoDiscount > 0 && (
+                      <span className="text-[11px] text-green-600" title="Shop promotion">
+                        promo −{promoDiscount.toLocaleString()}
                       </span>
-                      <span className="text-green-600">−Rs. {promoDiscount.toLocaleString()}</span>
-                    </div>
-                  )}
-
-                  {/* Discount control — bargain (on top of promo) */}
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs text-slate-500 w-14">{hasPromo ? 'Extra' : 'Discount'}</span>
+                    )}
                     <DiscountTypeToggle
                       value={item.discountType}
                       onChange={(type) => setItemDiscountType(item.variantId, type)}
@@ -578,13 +729,11 @@ function Sales() {
                       min="0"
                       value={item.discountValue || ''}
                       onChange={(e) => setItemDiscountValue(item.variantId, e.target.value)}
-                      placeholder="0"
+                      onKeyDown={(e) => { if (e.key === 'Enter') focusSearch(); }}
+                      placeholder="disc."
                       aria-label={`Discount for ${item.productName}`}
-                      className={`w-20 px-2 py-1 border rounded text-sm ${lineOverLimit ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
+                      className={`w-16 h-7 px-2 border rounded text-sm ${lineOverLimit ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
                     />
-                    {bargainDiscount > 0 && (
-                      <span className="text-xs text-green-600">−Rs. {bargainDiscount.toLocaleString()}</span>
-                    )}
                   </div>
                   {lineOverLimit && (
                     <p className="text-[11px] text-red-600 mt-1">
@@ -597,34 +746,32 @@ function Sales() {
           )}
         </div>
 
-        <div className="p-4 border-t border-slate-200">
-          <div className="flex justify-between text-sm mb-1">
+        <div className="px-4 py-3 border-t border-slate-200 shrink-0 space-y-2">
+          <div className="flex justify-between text-sm">
             <span className="text-slate-600">Subtotal</span>
             <span>Rs. {subtotal.toLocaleString()}</span>
           </div>
           {items.length > 0 && (
-            <div className="flex items-center gap-2 text-sm mb-1">
+            <div className="flex items-center gap-2 text-sm">
               <span className="text-slate-600 flex-1">Bill discount</span>
+              {getBillDiscount() > 0 && (
+                <span className="text-xs text-green-600">−Rs. {getBillDiscount().toLocaleString()}</span>
+              )}
               <DiscountTypeToggle value={billDiscountType} onChange={setBillDiscountType} />
               <input
                 type="number"
                 min="0"
                 value={billDiscountValue || ''}
                 onChange={(e) => setBillDiscountValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') focusSearch(); }}
                 placeholder="0"
                 aria-label="Bill discount"
-                className="w-20 px-2 py-1 border border-slate-300 rounded text-sm"
+                className="w-16 h-7 px-2 border border-slate-300 rounded text-sm"
               />
             </div>
           )}
-          {getBillDiscount() > 0 && (
-            <div className="flex justify-between text-xs mb-1 text-green-600">
-              <span>Bill discount</span>
-              <span>−Rs. {getBillDiscount().toLocaleString()}</span>
-            </div>
-          )}
           {maxCashierPercent > 0 && (
-            <div className="mb-2">
+            <div>
               <div className="flex flex-wrap gap-1 mb-1">
                 {DISCOUNT_REASONS.map((r) => (
                   <button
@@ -640,48 +787,46 @@ function Sales() {
                 {overLimit && approvalCovers ? (
                   <><FaUserShield /> Approved by {approval.approverName} (up to {approval.percent}%)</>
                 ) : overLimit ? (
-                  <><FaUserShield /> {maxCashierPercent.toFixed(1)}% off — over your {myLimit}% limit. Manager PIN needed at checkout.</>
+                  <><FaUserShield /> {maxCashierPercent.toFixed(1)}% off — over your {myLimit}% limit. Manager PIN needed.</>
                 ) : (
                   <>Discount {maxCashierPercent.toFixed(1)}% · within your {myLimit}% limit</>
                 )}
               </p>
             </div>
           )}
-          {totalDiscount > 0 && (
-            <div className="flex justify-between text-sm mb-1 text-green-600">
-              <span>Total Discount</span>
-              <span>−Rs. {totalDiscount.toLocaleString()}</span>
-            </div>
-          )}
-          <div className="flex justify-between font-bold text-lg mb-3">
-            <span>Total</span>
-            <span className="text-blue-600">Rs. {total.toLocaleString()}</span>
+          <div className="flex justify-between items-baseline">
+            <span className="font-bold text-lg">Total</span>
+            <span className="text-right">
+              {totalDiscount > 0 && (
+                <span className="text-xs text-green-600 mr-2">saved Rs. {totalDiscount.toLocaleString()}</span>
+              )}
+              <span className="font-bold text-2xl text-blue-600">Rs. {total.toLocaleString()}</span>
+            </span>
           </div>
+
           {!isSplit ? (
-            <>
-              <div className="flex gap-2 mb-2">
-                {PAYMENT_METHODS.map((method) => (
-                  <button
-                    key={method}
-                    onClick={() => setSinglePaymentMethod(method)}
-                    className={`flex-1 py-2 text-xs rounded capitalize ${payments[0].method === method ? 'bg-yellow-500 text-black' : 'bg-slate-50 text-slate-700 border border-slate-200'}`}
-                  >
-                    {method.replace('_', ' ')}
-                  </button>
-                ))}
-              </div>
-              <button onClick={startSplit} className="text-xs text-blue-600 hover:underline mb-3">
-                + Split payment
+            <div className="flex gap-1.5 items-center">
+              {PAYMENT_METHODS.map((method) => (
+                <button
+                  key={method}
+                  onClick={() => setSinglePaymentMethod(method)}
+                  className={`flex-1 py-1.5 text-xs rounded capitalize ${payments[0].method === method ? 'bg-yellow-500 text-black' : 'bg-slate-50 text-slate-700 border border-slate-200'}`}
+                >
+                  {method.replace('_', ' ')}
+                </button>
+              ))}
+              <button onClick={startSplit} title="Split payment" className="text-xs text-blue-600 hover:underline px-1">
+                Split
               </button>
-            </>
+            </div>
           ) : (
-            <div className="mb-3 space-y-2">
+            <div className="space-y-1.5">
               {payments.map((p, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <select
                     value={p.method}
                     onChange={(e) => updatePaymentLine(i, 'method', e.target.value)}
-                    className="px-2 py-1.5 border border-slate-300 rounded text-xs capitalize flex-1"
+                    className="px-2 py-1 border border-slate-300 rounded text-xs capitalize flex-1"
                   >
                     {PAYMENT_METHODS.map((m) => (
                       <option key={m} value={m}>{m.replace('_', ' ')}</option>
@@ -692,41 +837,67 @@ function Sales() {
                     value={p.amount}
                     onChange={(e) => updatePaymentLine(i, 'amount', e.target.value)}
                     placeholder="Amount"
-                    className="w-24 px-2 py-1.5 border border-slate-300 rounded text-xs"
+                    className="w-24 px-2 py-1 border border-slate-300 rounded text-xs"
                   />
                   <button onClick={() => removePaymentLine(i)} className="text-red-400 hover:text-red-600">
                     <FaTimes size={12} />
                   </button>
                 </div>
               ))}
-              <button onClick={addPaymentLine} className="text-xs text-blue-600 hover:underline">
-                + Add another payment
-              </button>
-              <p className={`text-xs font-medium ${Math.abs(remaining) < 0.01 ? 'text-green-600' : 'text-red-600'}`}>
-                {Math.abs(remaining) < 0.01 ? 'Fully covered' : `Remaining: Rs. ${remaining.toLocaleString()}`}
-              </p>
+              <div className="flex justify-between items-center">
+                <button onClick={addPaymentLine} className="text-xs text-blue-600 hover:underline">
+                  + Add another payment
+                </button>
+                <p className={`text-xs font-medium ${Math.abs(remaining) < 0.01 ? 'text-green-600' : 'text-red-600'}`}>
+                  {Math.abs(remaining) < 0.01 ? 'Fully covered' : `Remaining: Rs. ${remaining.toLocaleString()}`}
+                </p>
+              </div>
             </div>
           )}
-          {cashLine && (
-            <div className="mb-3">
-              <input
-                type="number"
-                value={cashReceived}
-                onChange={(e) => setCashReceived(e.target.value)}
-                placeholder={`Cash received${isSplit ? ` (Rs. ${cashDue.toLocaleString()} due)` : ''}`}
-                className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
-              />
-              {cashReceived && change >= 0 && (
-                <p className="text-sm text-green-600 mt-1">Change: Rs. {change.toLocaleString()}</p>
-              )}
+
+          {cashLine && items.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={cashInputRef}
+                  type="number"
+                  value={cashReceived}
+                  onChange={(e) => setCashReceived(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCheckout(); }}
+                  placeholder={isSplit ? `Cash (Rs. ${cashDue.toLocaleString()} due)` : 'Cash received (blank = exact)'}
+                  aria-label="Cash received"
+                  className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-sm"
+                />
+                <span className={`text-sm font-semibold whitespace-nowrap ${change < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {change < 0 ? `Short Rs. ${(-change).toLocaleString()}` : `Change Rs. ${change.toLocaleString()}`}
+                </span>
+              </div>
+              <div className="flex gap-1.5 mt-1.5">
+                <button
+                  onClick={() => setCashReceived('')}
+                  className={`flex-1 py-1 text-xs rounded border ${cashReceived === '' ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+                >
+                  Exact
+                </button>
+                {quickCashAmounts(cashDue).map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => setCashReceived(String(amt))}
+                    className={`flex-1 py-1 text-xs rounded border ${Number(cashReceived) === amt ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
+                  >
+                    {amt.toLocaleString()}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
+
           <button
             onClick={() => handleCheckout()}
             disabled={processing || items.length === 0}
             className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50"
           >
-            {processing ? 'Processing...' : overLimit && !approvalCovers ? 'Get Approval & Complete' : 'Complete Sale'}
+            {processing ? 'Processing...' : overLimit && !approvalCovers ? 'Get Approval & Complete (F9)' : 'Complete Sale (F9)'}
           </button>
         </div>
       </div>
@@ -748,6 +919,59 @@ function Sales() {
     </div>
   );
 }
+
+// ─── No open shift: open one right here instead of leaving the POS ──
+function OpenShiftBanner({ onOpened }) {
+  const [openingCash, setOpeningCash] = useState('');
+  const [opening, setOpening] = useState(false);
+
+  const handleOpen = async (e) => {
+    e.preventDefault();
+    if (openingCash === '' || Number(openingCash) < 0) {
+      toast.error('Enter the cash in the drawer (0 if empty).');
+      return;
+    }
+    setOpening(true);
+    try {
+      const res = await shiftService.open({ openingCash: Number(openingCash) });
+      toast.success('Shift opened.');
+      onOpened(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not open shift.');
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleOpen}
+      className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3"
+    >
+      <FaCashRegister className="text-amber-600" />
+      <p className="text-sm text-amber-900 flex-1 min-w-[180px]">
+        <strong>No open shift.</strong> Open one to start selling.
+      </p>
+      <input
+        type="number"
+        min="0"
+        value={openingCash}
+        onChange={(e) => setOpeningCash(e.target.value)}
+        placeholder="Cash in drawer"
+        aria-label="Opening cash"
+        className="w-36 px-3 py-1.5 border border-amber-300 rounded text-sm bg-white"
+      />
+      <button
+        type="submit"
+        disabled={opening}
+        className="px-4 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50"
+      >
+        {opening ? 'Opening...' : 'Open Shift'}
+      </button>
+    </form>
+  );
+}
+
 
 function DiscountTypeToggle({ value, onChange }) {
   return (

@@ -64,21 +64,23 @@ const useCartStore = create((set, get) => ({
     set({ heldCarts });
   },
 
-  // Add an item to the cart (or increase quantity if already there)
-  addItem: (product) => {
+  // Add an item to the cart (or increase quantity if already there), capped
+  // at stock. Returns the quantity actually added (0 = already at stock).
+  addItem: (product, qty = 1) => {
     const items = get().items;
     const existing = items.find((i) => i.variantId === product.id);
+    const inCart = existing?.quantity || 0;
+    const added = Math.max(0, Math.min(qty, product.stock_quantity - inCart));
+    if (added === 0) return 0;
 
     if (existing) {
-      if (existing.quantity < product.stock_quantity) {
-        set({
-          items: items.map((i) =>
-            i.variantId === product.id
-              ? { ...i, quantity: i.quantity + 1 }
-              : i
-          ),
-        });
-      }
+      set({
+        items: items.map((i) =>
+          i.variantId === product.id
+            ? { ...i, quantity: i.quantity + added, stockQuantity: product.stock_quantity }
+            : i
+        ),
+      });
     } else {
       set({
         items: [
@@ -90,7 +92,7 @@ const useCartStore = create((set, get) => ({
             color: product.color,
             barcode: product.barcode,
             sellPrice: Number(product.sell_price),
-            quantity: 1,
+            quantity: added,
             stockQuantity: product.stock_quantity,
             discountType: 'percent',  // 'percent' or 'fixed'
             discountValue: 0,          // the number the cashier types
@@ -105,6 +107,18 @@ const useCartStore = create((set, get) => ({
         ],
       });
     }
+    return added;
+  },
+
+  // Typed quantity — clamped to 1..stock.
+  setQty: (variantId, qty) => {
+    set({
+      items: get().items.map((i) =>
+        i.variantId === variantId
+          ? { ...i, quantity: Math.min(Math.max(Math.floor(Number(qty)) || 1, 1), i.stockQuantity) }
+          : i
+      ),
+    });
   },
 
   increaseQty: (variantId) => {
