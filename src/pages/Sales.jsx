@@ -43,51 +43,101 @@ function Sales() {
     contentRef: receiptRef,
   });
 
-  const handleSearch = async (e) => {
+  // Keeps the cursor in the search box so the next barcode scan lands there —
+  // otherwise the scanner's Enter "clicks" whatever button was last clicked.
+  // The old text is selected (not cleared) so the results stay clickable but
+  // a scan replaces it instead of being appended to it.
+  const focusSearch = () => {
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
+  };
+
+  // Every search gets a sequence number; only the latest one may update the
+  // results, so a slow response can't overwrite a newer search or a scan.
+  const searchSeqRef = useRef(0);
+  const searchTimerRef = useRef(null);
+
+  const runSearch = async (term) => {
+    const seq = ++searchSeqRef.current;
+    setSearching(true);
+    try {
+      const res = await productService.search(term);
+      if (seq === searchSeqRef.current) setResults(res.data);
+    } catch {
+      if (seq === searchSeqRef.current) toast.error('Search failed.');
+    } finally {
+      if (seq === searchSeqRef.current) setSearching(false);
+    }
+  };
+
+  const cancelPendingSearch = () => {
+    clearTimeout(searchTimerRef.current);
+    searchSeqRef.current++;
+    setSearching(false);
+  };
+
+  useEffect(() => () => clearTimeout(searchTimerRef.current), []);
+
+  const handleSearch = (e) => {
     const term = e.target.value;
     setSearchTerm(term);
+    clearTimeout(searchTimerRef.current);
     if (term.trim().length < 1) {
+      cancelPendingSearch();
       setResults([]);
       return;
     }
-    setSearching(true);
-    try {
-      const res = await productService.search(term.trim());
-      setResults(res.data);
-    } catch (err) {
-      toast.error('Search failed.');
-    } finally {
-      setSearching(false);
-    }
+    // Debounced — a scanner types a whole barcode in a few ms.
+    searchTimerRef.current = setTimeout(() => runSearch(term.trim()), 250);
   };
 
   const handleBarcodeScan = async (e) => {
     if (e.key !== 'Enter') return;
     const code = searchTerm.trim();
     if (!code) return;
+    cancelPendingSearch();
 
     try {
       const res = await productService.getByBarcode(code);
       handleAddToCart(res.data);
       setSearchTerm('');
       setResults([]);
+      return;
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Barcode not found.');
-      setSearchTerm('');
+      if (err.response?.status !== 404) {
+        toast.error(err.response?.data?.message || 'Lookup failed.');
+        return;
+      }
+    }
+
+    // Not a barcode — treat Enter as "search by name" instead of wiping
+    // what the cashier typed.
+    const seq = ++searchSeqRef.current;
+    try {
+      const res = await productService.search(code);
+      if (seq !== searchSeqRef.current) return;
+      if (res.data.length === 1) {
+        handleAddToCart(res.data[0]);
+        setSearchTerm('');
+        setResults([]);
+      } else if (res.data.length > 1) {
+        setResults(res.data);
+        toast('Several matches — click the right one.', { icon: '👆' });
+      } else {
+        toast.error('No product or barcode matches that.');
+        setSearchTerm('');
+        setResults([]);
+      }
+    } catch {
+      toast.error('Search failed.');
     }
   };
 
-  const handleShowAll = async () => {
+  const handleShowAll = () => {
+    clearTimeout(searchTimerRef.current);
     setSearchTerm('');
-    setSearching(true);
-    try {
-      const res = await productService.search('');
-      setResults(res.data);
-    } catch (err) {
-      toast.error('Failed to load items.');
-    } finally {
-      setSearching(false);
-    }
+    runSearch('');
+    focusSearch();
   };
 
   const handleAddToCart = (product) => {
@@ -97,6 +147,7 @@ function Sales() {
     }
     addItem(product);
     toast.success(`${product.product_name} added.`);
+    focusSearch();
   };
 
   // ─── Split-tender payment helpers ─────────────────
@@ -429,7 +480,7 @@ function Sales() {
                         </span>
                       )}
                     </div>
-                    <button onClick={() => removeItem(item.variantId)} className="text-red-400 hover:text-red-600">
+                    <button onClick={() => { removeItem(item.variantId); focusSearch(); }} className="text-red-400 hover:text-red-600">
                       <FaTrash size={12} />
                     </button>
                   </div>
@@ -437,11 +488,11 @@ function Sales() {
 
                   <div className="flex justify-between items-center mt-2">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => decreaseQty(item.variantId)} className="w-6 h-6 bg-slate-200 rounded flex items-center justify-center hover:bg-slate-300">
+                      <button onClick={() => { decreaseQty(item.variantId); focusSearch(); }} className="w-6 h-6 bg-slate-200 rounded flex items-center justify-center hover:bg-slate-300">
                         <FaMinus size={10} />
                       </button>
                       <span className="text-sm w-6 text-center">{item.quantity}</span>
-                      <button onClick={() => increaseQty(item.variantId)} className="w-6 h-6 bg-slate-200 rounded flex items-center justify-center hover:bg-slate-300">
+                      <button onClick={() => { increaseQty(item.variantId); focusSearch(); }} className="w-6 h-6 bg-slate-200 rounded flex items-center justify-center hover:bg-slate-300">
                         <FaPlus size={10} />
                       </button>
                     </div>
