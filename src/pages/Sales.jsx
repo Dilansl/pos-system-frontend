@@ -1,14 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
-import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes } from 'react-icons/fa';
+import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes, FaUserShield } from 'react-icons/fa';
 import productService from '../services/product.service';
 import saleService from '../services/sale.service';
+import settingsService from '../services/settings.service';
 import useCartStore from '../store/cartStore';
+import useAuthStore from '../store/authStore';
 import Receipt from '../components/sales/Receipt';
+import Modal from '../components/common/Modal';
 import offlineQueue from '../utils/offlineQueue';
 
 const PAYMENT_METHODS = ['cash', 'card', 'bank_transfer'];
+const DISCOUNT_REASONS = ['Bargain', 'Regular customer', 'Damaged / defect', 'Staff purchase', 'Other'];
 
 function Sales() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -22,6 +26,13 @@ function Sales() {
   const [processing, setProcessing] = useState(false);
   const [completedSale, setCompletedSale] = useState(null);
   const [showHeldList, setShowHeldList] = useState(false);
+  // Discount control: per-role limits + who can approve (from settings), the
+  // manager approval for this checkout (if any), and the cashier's reason.
+  const [discountSettings, setDiscountSettings] = useState({ limits: {}, approvers: [] });
+  const [approval, setApproval] = useState(null); // { token, approverName, percent }
+  const [showApproval, setShowApproval] = useState(false);
+  const [discountReason, setDiscountReason] = useState('');
+  const user = useAuthStore((state) => state.user);
 
   const receiptRef = useRef();
   const searchInputRef = useRef(null);
@@ -35,9 +46,24 @@ function Sales() {
     setItemDiscountType, setItemDiscountValue,
     getItemDiscount, getItemLineTotal,
     getItemPromoDiscount, getItemBargainDiscount,
+    billDiscountType, billDiscountValue, setBillDiscountType, setBillDiscountValue,
+    getBillDiscount, getItemCashierPercent, getMaxCashierPercent,
     clearCart, getSubtotal, getTotal, getTotalDiscount, getItemCount,
     heldCarts, holdCart, resumeCart, discardHeldCart,
   } = useCartStore();
+
+  useEffect(() => {
+    settingsService.getDiscount()
+      .then((res) => setDiscountSettings(res.data))
+      .catch(() => toast.error('Could not load discount limits.'));
+  }, []);
+
+  // Cashier discount (bargain + bill) vs. this user's limit. Above it the
+  // sale needs a manager PIN; an approval only covers up to its own %.
+  const myLimit = Number(discountSettings.limits[user?.role] ?? 0);
+  const maxCashierPercent = getMaxCashierPercent();
+  const overLimit = maxCashierPercent > myLimit + 0.01;
+  const approvalCovers = !!approval && approval.percent + 0.01 >= maxCashierPercent;
 
   const handlePrint = useReactToPrint({
     contentRef: receiptRef,
@@ -198,6 +224,8 @@ function Sales() {
       return;
     }
     holdCart();
+    setApproval(null);
+    setDiscountReason('');
     toast.success('Sale held. Resume it from "Held Sales".');
     setSearchTerm('');
     setResults([]);
@@ -208,6 +236,7 @@ function Sales() {
       return;
     }
     resumeCart(id);
+    setApproval(null);
     setShowHeldList(false);
     toast.success('Held sale resumed.');
   };
@@ -215,6 +244,7 @@ function Sales() {
   // ─── Keyboard shortcuts: F2 search, F4 hold, F9 checkout ──
   useEffect(() => {
     const handleKey = (e) => {
+      if (showApproval) return; // PIN dialog open — don't checkout/hold underneath it
       if (e.key === 'F2') {
         e.preventDefault();
         searchInputRef.current?.focus();
@@ -230,9 +260,16 @@ function Sales() {
     return () => document.removeEventListener('keydown', handleKey);
   });
 
-  const handleCheckout = async () => {
+  // approvalOverride: the approval just granted in the PIN dialog (state
+  // hasn't updated yet when checkout continues straight after it).
+  const handleCheckout = async (approvalOverride) => {
+    const activeApproval = approvalOverride || approval;
     if (items.length === 0) {
       toast.error('Cart is empty.');
+      return;
+    }
+    if (overLimit && !(activeApproval && activeApproval.percent + 0.01 >= maxCashierPercent)) {
+      setShowApproval(true);
       return;
     }
     if (isSplit && Math.abs(remaining) > 0.01) {
@@ -260,6 +297,10 @@ function Sales() {
         discountType: i.discountValue ? i.discountType : null,
         discountValue: i.discountValue || 0,
       })),
+      billDiscountType: billDiscountValue ? billDiscountType : null,
+      billDiscountValue: billDiscountValue || 0,
+      discountReason: discountReason || null,
+      approvalToken: activeApproval?.token || null,
       payments: payments.map((p) => ({
         method: p.method,
         amount: isSplit ? (Number(p.amount) || 0) : total,
@@ -278,6 +319,8 @@ function Sales() {
       setCompletedSale(saleForReceipt);
       toast.success('Sale completed!');
       clearCart();
+      setApproval(null);
+      setDiscountReason('');
       idempotencyKeyRef.current = crypto.randomUUID();
       setPayments([{ method: 'cash', amount: '' }]);
       setCashReceived('');
@@ -290,6 +333,11 @@ function Sales() {
         // and should be surfaced normally instead of silently retried.
         offlineQueue.enqueue(saleData);
         toast.error('No connection — sale saved and will sync automatically once you\'re back online.');
+      } else if (err.response?.data?.code === 'DISCOUNT_APPROVAL_REQUIRED') {
+        // Server says the approval is missing/insufficient (e.g. limits changed).
+        setApproval(null);
+        toast.error(err.response.data.message);
+        setShowApproval(true);
       } else {
         toast.error(err.response?.data?.message || 'Sale failed.');
       }
@@ -469,6 +517,8 @@ function Sales() {
               const promoDiscount = getItemPromoDiscount(item);
               const bargainDiscount = getItemBargainDiscount(item);
               const hasPromo = item.promoType && item.promoValue > 0;
+              const linePercent = getItemCashierPercent(item);
+              const lineOverLimit = linePercent > myLimit + 0.01;
               return (
                 <div key={item.variantId} className="mb-3 pb-3 border-b border-slate-100">
                   <div className="flex justify-between">
@@ -518,33 +568,29 @@ function Sales() {
 
                   {/* Discount control — bargain (on top of promo) */}
                   <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs text-slate-500">{hasPromo ? 'Extra:' : 'Discount:'}</span>
-                    <div className="flex border border-slate-300 rounded overflow-hidden">
-                      <button
-                        onClick={() => setItemDiscountType(item.variantId, 'percent')}
-                        className={`px-2 py-0.5 text-xs ${item.discountType === 'percent' ? 'bg-yellow-500 text-black' : 'bg-slate-100 text-slate-600'}`}
-                      >
-                        %
-                      </button>
-                      <button
-                        onClick={() => setItemDiscountType(item.variantId, 'fixed')}
-                        className={`px-2 py-0.5 text-xs ${item.discountType === 'fixed' ? 'bg-yellow-500 text-black' : 'bg-slate-100 text-slate-600'}`}
-                      >
-                        Rs
-                      </button>
-                    </div>
+                    <span className="text-xs text-slate-500 w-14">{hasPromo ? 'Extra' : 'Discount'}</span>
+                    <DiscountTypeToggle
+                      value={item.discountType}
+                      onChange={(type) => setItemDiscountType(item.variantId, type)}
+                    />
                     <input
                       type="number"
                       min="0"
                       value={item.discountValue || ''}
                       onChange={(e) => setItemDiscountValue(item.variantId, e.target.value)}
                       placeholder="0"
-                      className="w-16 px-2 py-0.5 border border-slate-300 rounded text-xs"
+                      aria-label={`Discount for ${item.productName}`}
+                      className={`w-20 px-2 py-1 border rounded text-sm ${lineOverLimit ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
                     />
                     {bargainDiscount > 0 && (
                       <span className="text-xs text-green-600">−Rs. {bargainDiscount.toLocaleString()}</span>
                     )}
                   </div>
+                  {lineOverLimit && (
+                    <p className="text-[11px] text-red-600 mt-1">
+                      {linePercent.toFixed(1)}% off — over your {myLimit}% limit, needs manager PIN
+                    </p>
+                  )}
                 </div>
               );
             })
@@ -556,6 +602,51 @@ function Sales() {
             <span className="text-slate-600">Subtotal</span>
             <span>Rs. {subtotal.toLocaleString()}</span>
           </div>
+          {items.length > 0 && (
+            <div className="flex items-center gap-2 text-sm mb-1">
+              <span className="text-slate-600 flex-1">Bill discount</span>
+              <DiscountTypeToggle value={billDiscountType} onChange={setBillDiscountType} />
+              <input
+                type="number"
+                min="0"
+                value={billDiscountValue || ''}
+                onChange={(e) => setBillDiscountValue(e.target.value)}
+                placeholder="0"
+                aria-label="Bill discount"
+                className="w-20 px-2 py-1 border border-slate-300 rounded text-sm"
+              />
+            </div>
+          )}
+          {getBillDiscount() > 0 && (
+            <div className="flex justify-between text-xs mb-1 text-green-600">
+              <span>Bill discount</span>
+              <span>−Rs. {getBillDiscount().toLocaleString()}</span>
+            </div>
+          )}
+          {maxCashierPercent > 0 && (
+            <div className="mb-2">
+              <div className="flex flex-wrap gap-1 mb-1">
+                {DISCOUNT_REASONS.map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setDiscountReason(discountReason === r ? '' : r)}
+                    className={`px-2 py-0.5 rounded-full text-[11px] border ${discountReason === r ? 'bg-yellow-500 border-yellow-500 text-black' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+              <p className={`text-[11px] flex items-center gap-1 ${overLimit && !approvalCovers ? 'text-red-600' : 'text-slate-500'}`}>
+                {overLimit && approvalCovers ? (
+                  <><FaUserShield /> Approved by {approval.approverName} (up to {approval.percent}%)</>
+                ) : overLimit ? (
+                  <><FaUserShield /> {maxCashierPercent.toFixed(1)}% off — over your {myLimit}% limit. Manager PIN needed at checkout.</>
+                ) : (
+                  <>Discount {maxCashierPercent.toFixed(1)}% · within your {myLimit}% limit</>
+                )}
+              </p>
+            </div>
+          )}
           {totalDiscount > 0 && (
             <div className="flex justify-between text-sm mb-1 text-green-600">
               <span>Total Discount</span>
@@ -631,15 +722,121 @@ function Sales() {
             </div>
           )}
           <button
-            onClick={handleCheckout}
+            onClick={() => handleCheckout()}
             disabled={processing || items.length === 0}
             className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50"
           >
-            {processing ? 'Processing...' : 'Complete Sale'}
+            {processing ? 'Processing...' : overLimit && !approvalCovers ? 'Get Approval & Complete' : 'Complete Sale'}
           </button>
         </div>
       </div>
+
+      {showApproval && (
+        <ApprovalModal
+          approvers={discountSettings.approvers}
+          // Rounded up so the server's own calculation is always covered.
+          percent={Math.ceil(maxCashierPercent * 10) / 10}
+          getIdempotencyKey={() => idempotencyKeyRef.current}
+          onClose={() => { setShowApproval(false); focusSearch(); }}
+          onApproved={(granted) => {
+            setApproval(granted);
+            setShowApproval(false);
+            handleCheckout(granted);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function DiscountTypeToggle({ value, onChange }) {
+  return (
+    <div className="flex border border-slate-300 rounded overflow-hidden shrink-0">
+      {[['percent', '%'], ['fixed', 'Rs']].map(([type, label]) => (
+        <button
+          key={type}
+          onClick={() => onChange(type)}
+          className={`px-2.5 py-1 text-xs font-medium ${value === type ? 'bg-yellow-500 text-black' : 'bg-slate-100 text-slate-600'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Manager PIN approval for an over-limit discount ──
+function ApprovalModal({ approvers, percent, getIdempotencyKey, onClose, onApproved }) {
+  const [approverId, setApproverId] = useState(approvers[0]?.id || '');
+  const [pin, setPin] = useState('');
+  const [checking, setChecking] = useState(false);
+
+  const handleApprove = async (e) => {
+    e.preventDefault();
+    if (!approverId || pin.length < 4) return;
+    setChecking(true);
+    try {
+      const res = await saleService.approveDiscount({
+        approverId, pin, percent, idempotencyKey: getIdempotencyKey(),
+      });
+      toast.success(`Approved by ${res.data.approverName}.`);
+      onApproved({ token: res.data.token, approverName: res.data.approverName, percent });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Approval failed.');
+      setPin('');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose} titleId="approval-modal-title" maxWidth="max-w-sm">
+      <h3 id="approval-modal-title" className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2">
+        <FaUserShield /> Manager approval
+      </h3>
+      <p className="text-sm text-slate-500 mb-4">
+        This sale has a <strong>{percent}%</strong> discount, over the cashier limit.
+      </p>
+      {approvers.length === 0 ? (
+        <p className="text-sm text-red-600 mb-4">
+          No manager has an approval PIN yet. An admin can set one in Staff → PIN.
+        </p>
+      ) : (
+        <form onSubmit={handleApprove}>
+          <select
+            value={approverId}
+            onChange={(e) => setApproverId(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded mb-3"
+          >
+            {approvers.map((a) => (
+              <option key={a.id} value={a.id}>{a.name} ({a.role})</option>
+            ))}
+          </select>
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={6}
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="Manager PIN"
+            aria-label="Manager PIN"
+            autoFocus
+            className="w-full px-3 py-2 border border-slate-300 rounded mb-4 text-center text-lg tracking-[0.5em]"
+          />
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
+            <button
+              type="submit"
+              disabled={checking || pin.length < 4}
+              className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50"
+            >
+              {checking ? 'Checking...' : 'Approve'}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaPlus, FaUserShield, FaKey, FaUserSlash, FaUserCheck, FaEdit } from 'react-icons/fa';
+import { FaPlus, FaUserShield, FaKey, FaUserSlash, FaUserCheck, FaEdit, FaLock, FaPercent } from 'react-icons/fa';
 import staffService from '../services/staff.service';
+import settingsService from '../services/settings.service';
 import Modal from '../components/common/Modal';
 
 function Staff() {
@@ -10,6 +11,7 @@ function Staff() {
   const [showModal, setShowModal] = useState(false);
   const [editStaff, setEditStaff] = useState(null);
   const [passwordStaff, setPasswordStaff] = useState(null);
+  const [pinStaff, setPinStaff] = useState(null);
 
   const loadStaff = async () => {
     try {
@@ -98,6 +100,15 @@ function Staff() {
                       <button onClick={() => setPasswordStaff(member)} title="Reset password" className="hover:text-orange-600">
                         <FaKey />
                       </button>
+                      {['manager', 'admin'].includes(member.role) && (
+                        <button
+                          onClick={() => setPinStaff(member)}
+                          title={member.has_pin ? 'Change approval PIN' : 'Set approval PIN'}
+                          className={member.has_pin ? 'text-green-600 hover:text-green-700' : 'hover:text-yellow-600'}
+                        >
+                          <FaLock />
+                        </button>
+                      )}
                       <button onClick={() => handleToggleActive(member)} title={member.is_active ? 'Deactivate' : 'Activate'} className="hover:text-red-600">
                         {member.is_active ? <FaUserSlash /> : <FaUserCheck />}
                       </button>
@@ -108,6 +119,16 @@ function Staff() {
             </tbody>
           </table>
         </div>
+      )}
+
+      <DiscountLimitsCard />
+
+      {pinStaff && (
+        <PinModal
+          staff={pinStaff}
+          onClose={() => setPinStaff(null)}
+          onSuccess={() => { setPinStaff(null); loadStaff(); }}
+        />
       )}
 
       {showModal && (
@@ -248,6 +269,124 @@ function PasswordModal({ staff, onClose, onSuccess }) {
         </button>
       </div>
     </Modal>
+  );
+}
+
+// ─── Approval PIN Modal (managers/admins) ─────────
+function PinModal({ staff, onClose, onSuccess }) {
+  const [pin, setPin] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const save = async (newPin) => {
+    setSaving(true);
+    try {
+      const res = await staffService.setPin(staff.id, newPin);
+      toast.success(res.message);
+      onSuccess();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save PIN.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose} titleId="pin-modal-title" maxWidth="max-w-sm">
+      <h3 id="pin-modal-title" className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2">
+        <FaLock /> Approval PIN
+      </h3>
+      <p className="text-sm text-slate-500 mb-4">
+        {staff.name} types this at the till to approve discounts over the cashier limit.
+      </p>
+      <input
+        type="password"
+        inputMode="numeric"
+        autoComplete="new-password"
+        maxLength={6}
+        value={pin}
+        onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+        placeholder="4–6 digits"
+        autoFocus
+        className="w-full px-3 py-2 border border-slate-300 rounded mb-4 text-center text-lg tracking-[0.5em]"
+      />
+      <div className="flex gap-2 justify-between">
+        {staff.has_pin ? (
+          <button onClick={() => save(null)} disabled={saving} className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded">
+            Remove PIN
+          </button>
+        ) : <span />}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
+          <button
+            onClick={() => save(pin)}
+            disabled={saving || pin.length < 4}
+            className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save PIN'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Discount limits per role ─────────────────────
+function DiscountLimitsCard() {
+  const [limits, setLimits] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    settingsService.getDiscount()
+      .then((res) => setLimits(res.data.limits))
+      .catch(() => toast.error('Failed to load discount limits.'));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await settingsService.setDiscountLimits(limits);
+      setLimits(res.data);
+      toast.success('Discount limits saved.');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save limits.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!limits) return null;
+
+  return (
+    <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 max-w-xl">
+      <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-1">
+        <FaPercent size={12} /> Discount limits
+      </h3>
+      <p className="text-sm text-slate-500 mb-4">
+        The most each role can take off an item by bargaining or bill discount (on top of promotions).
+        Above this, a manager or admin must approve with their PIN.
+      </p>
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {['cashier', 'manager', 'admin'].map((role) => (
+          <label key={role} className="text-sm">
+            <span className="block text-slate-600 capitalize mb-1">{role}</span>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={limits[role]}
+                onChange={(e) => setLimits({ ...limits, [role]: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded"
+              />
+              <span className="text-slate-500">%</span>
+            </div>
+          </label>
+        ))}
+      </div>
+      <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50 text-sm">
+        {saving ? 'Saving...' : 'Save limits'}
+      </button>
+    </div>
   );
 }
 

@@ -7,6 +7,12 @@ const saleService = {
     return response.data;
   },
 
+  // Manager PIN for an over-limit discount → { token, approverName }
+  approveDiscount: async ({ approverId, pin, idempotencyKey, percent }) => {
+    const response = await api.post('/sales/discount-approval', { approverId, pin, idempotencyKey, percent });
+    return response.data;
+  },
+
   // Get a single sale by id (for receipt)
   getById: async (id) => {
     const response = await api.get(`/sales/${id}`);
