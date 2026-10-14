@@ -41,6 +41,7 @@ const useCartStore = create((set, get) => ({
       billDiscountType: get().billDiscountType,
       billDiscountValue: get().billDiscountValue,
       returnInfo,
+      total: get().getTotal(), // for telling held carts apart in the list
       heldAt: new Date().toISOString(),
     };
     const heldCarts = [...get().heldCarts, held];

@@ -56,6 +56,8 @@ function Sales() {
   const [shift, setShift] = useState(undefined);
   const [flashId, setFlashId] = useState(null);
   const [showHeldList, setShowHeldList] = useState(false);
+  const [showHoldName, setShowHoldName] = useState(false);
+  const [heldFilter, setHeldFilter] = useState('');
   // Discount control: per-role limits + who can approve (from settings), the
   // manager approval for this checkout (if any), and the cashier's reason.
   const [discountSettings, setDiscountSettings] = useState({ limits: {}, approvers: [] });
@@ -333,18 +335,26 @@ function Sales() {
     setPayments(payments.filter((_, i) => i !== index));
   };
 
+  // Hold asks for a name first (customer name or phone) so the cart is easy
+  // to find when they come back; blank keeps the "Hold N" default.
   const handleHold = () => {
     if (items.length === 0 && !returnInfo) {
       toast.error('Cart is empty — nothing to hold.');
       return;
     }
-    holdCart();
+    setShowHoldName(true);
+  };
+
+  const confirmHold = (label) => {
+    setShowHoldName(false);
+    holdCart(label);
     setApproval(null);
     setRefundApproval(null);
     setDiscountReason('');
     toast.success('Sale held. Resume it from "Held Sales".');
     setSearchTerm('');
     setResults([]);
+    focusSearch();
   };
 
   const handleResumeHeld = (id) => {
@@ -355,6 +365,7 @@ function Sales() {
     setApproval(null);
     setRefundApproval(null);
     setShowHeldList(false);
+    setHeldFilter('');
     toast.success('Held sale resumed.');
   };
 
@@ -556,7 +567,7 @@ function Sales() {
   useEffect(() => {
     const handleKey = (e) => {
       // A dialog is open — don't checkout/hold underneath it.
-      if (showApproval || showRefundApproval || showReturnPicker || showReceipts) return;
+      if (showApproval || showRefundApproval || showReturnPicker || showReceipts || showHoldName) return;
       if (e.key === 'F6') {
         e.preventDefault();
         setShowReturnPicker(true);
@@ -588,6 +599,14 @@ function Sales() {
 
   const subtotal = getSubtotal();
   const totalDiscount = getTotalDiscount();
+
+  // Held Sales search: by name, or by phone ignoring spaces/dashes
+  // ("0771234567" finds "077 123 4567").
+  const heldQuery = heldFilter.trim().toLowerCase();
+  const heldDigits = heldQuery.replace(/\D/g, '');
+  const visibleHeld = !heldQuery ? heldCarts : heldCarts.filter((h) =>
+    h.label.toLowerCase().includes(heldQuery)
+    || (heldDigits.length >= 3 && h.label.replace(/\D/g, '').includes(heldDigits)));
 
   // ─── POS VIEW ─────────────────────────────────────
   return (
@@ -632,15 +651,29 @@ function Sales() {
             </button>
             {showHeldList && (
               <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-lg z-20 p-2">
+                {heldCarts.length > 2 && (
+                  <input
+                    value={heldFilter}
+                    onChange={(e) => setHeldFilter(e.target.value)}
+                    placeholder="Find by name or phone"
+                    aria-label="Find held sale"
+                    autoFocus
+                    className="w-full px-2 py-1.5 mb-1 border border-slate-300 rounded text-sm"
+                  />
+                )}
                 {heldCarts.length === 0 ? (
                   <p className="text-sm text-slate-400 p-2">No held sales.</p>
+                ) : visibleHeld.length === 0 ? (
+                  <p className="text-sm text-slate-400 p-2">No match.</p>
                 ) : (
-                  heldCarts.map((h) => (
+                  visibleHeld.map((h) => (
                     <div key={h.id} className="flex items-center justify-between gap-2 p-2 hover:bg-slate-50 rounded text-sm">
-                      <button onClick={() => handleResumeHeld(h.id)} className="text-left flex-1">
-                        <p className="font-medium text-slate-800">{h.label}</p>
+                      <button onClick={() => handleResumeHeld(h.id)} className="text-left flex-1 min-w-0">
+                        <p className="font-medium text-slate-800 truncate">{h.label}</p>
                         <p className="text-xs text-slate-400">
-                          {h.items.length} item{h.items.length > 1 ? 's' : ''} · {new Date(h.heldAt).toLocaleTimeString()}
+                          {h.items.length} item{h.items.length > 1 ? 's' : ''}
+                          {h.total != null && <> · Rs. {Number(h.total).toLocaleString()}</>}
+                          {' · '}{new Date(h.heldAt).toLocaleTimeString()}
                         </p>
                       </button>
                       <button onClick={() => discardHeldCart(h.id)} title="Discard" className="text-slate-400 hover:text-red-600">
@@ -654,7 +687,7 @@ function Sales() {
           </div>
         </div>
         <p className="text-xs text-slate-400 mb-3">
-          F2 search · F8 cash · F4 hold · F6 return · F9 checkout · scan <span className="font-mono">3*code</span> for qty 3
+          F2 search · F8 cash · F4 hold · F6 return · F7 receipts · F9 checkout · scan <span className="font-mono">3*code</span> for qty 3
         </p>
 
         {shift === null && (
@@ -1199,6 +1232,13 @@ function Sales() {
         />
       )}
 
+      {showHoldName && (
+        <HoldNameModal
+          onClose={() => { setShowHoldName(false); focusSearch(); }}
+          onHold={confirmHold}
+        />
+      )}
+
       {showReceipts && (
         <ReceiptsModal
           onClose={() => { setShowReceipts(false); focusSearch(); }}
@@ -1360,6 +1400,41 @@ function ApprovalModal({ approvers, message, request, onClose, onApproved }) {
           </div>
         </form>
       )}
+    </Modal>
+  );
+}
+
+// ─── Name a sale before holding it ─────────────────
+function HoldNameModal({ onClose, onHold }) {
+  const [label, setLabel] = useState('');
+
+  return (
+    <Modal onClose={onClose} titleId="hold-modal-title">
+      <h3 id="hold-modal-title" className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2">
+        <FaPause /> Hold sale
+      </h3>
+      <p className="text-sm text-slate-500 mb-4">
+        Customer name or phone, so you can find this cart when they come back. Leave blank to skip.
+      </p>
+      <form onSubmit={(e) => { e.preventDefault(); onHold(label); }}>
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="e.g. Nimali / 077 123 4567"
+          aria-label="Name or phone for the held sale"
+          maxLength={40}
+          autoFocus
+          className="w-full px-3 py-2 border border-slate-300 rounded mb-4"
+        />
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 border border-slate-300 rounded hover:bg-slate-50">
+            Cancel
+          </button>
+          <button type="submit" className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800">
+            Hold
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }
