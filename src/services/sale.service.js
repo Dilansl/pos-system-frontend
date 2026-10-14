@@ -31,6 +31,12 @@ const saleService = {
     return response.data;
   },
 
+  // Latest completed sales for reprinting (cashiers get only their own)
+  getRecent: async () => {
+    const response = await api.get('/sales/recent');
+    return response.data;
+  },
+
   getAll: async (params = '') => {
     const response = await api.get(`/sales${params}`);
     return response.data;

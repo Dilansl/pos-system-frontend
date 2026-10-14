@@ -13,6 +13,10 @@ const Receipt = forwardRef(({ sale }, ref) => {
         <p className="text-xs">Tel: 0706201176</p>
       </div>
 
+      {sale.isCopy && (
+        <p className="text-center font-bold text-sm mb-2">*** COPY ***</p>
+      )}
+
       {sale.isReturnOnly && (
         <p className="text-center font-bold text-sm mb-2">*** REFUND ***</p>
       )}

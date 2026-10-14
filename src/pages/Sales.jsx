@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
-import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes, FaUserShield, FaCashRegister, FaUndo } from 'react-icons/fa';
+import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes, FaUserShield, FaCashRegister, FaUndo, FaReceipt } from 'react-icons/fa';
 import productService from '../services/product.service';
 import saleService from '../services/sale.service';
 import settingsService from '../services/settings.service';
@@ -68,9 +68,14 @@ function Sales() {
   const [refundMethod, setRefundMethod] = useState('cash');
   const [refundApproval, setRefundApproval] = useState(null); // { token, approverName, amount }
   const [showRefundApproval, setShowRefundApproval] = useState(false);
+  // Reprinting an earlier receipt (F7). `n` changes on every request so the
+  // same receipt can be printed twice in a row.
+  const [showReceipts, setShowReceipts] = useState(false);
+  const [reprint, setReprint] = useState(null); // { sale, n }
   const user = useAuthStore((state) => state.user);
 
   const receiptRef = useRef();
+  const reprintRef = useRef();
   const searchInputRef = useRef(null);
   const cashInputRef = useRef(null);
   const flashTimerRef = useRef(null);
@@ -113,6 +118,16 @@ function Sales() {
   const handlePrint = useReactToPrint({
     contentRef: receiptRef,
   });
+
+  const handleReprint = useReactToPrint({
+    contentRef: reprintRef,
+  });
+
+  // Print the copy once it has rendered.
+  useEffect(() => {
+    if (reprint) handleReprint();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reprint?.n]);
 
   // Auto-print once the new receipt has rendered.
   useEffect(() => {
@@ -519,14 +534,37 @@ function Sales() {
     }
   };
 
-  // ─── Keyboard shortcuts: F2 search, F4 hold, F9 checkout ──
+  const reprintReceipt = async (saleId) => {
+    try {
+      const res = await saleService.getById(saleId);
+      const sale = res.data;
+      // An exchange that paid money back shows the refund again on the copy.
+      const ex = sale.exchange;
+      const refundOut = ex?.refund_method ? Number(ex.refund_amount) - Number(ex.exchange_amount || 0) : 0;
+      setReprint({
+        sale: { ...sale, isCopy: true, refundOut: refundOut > 0 ? refundOut : null, refundMethod: ex?.refund_method },
+        n: Date.now(),
+      });
+      setShowReceipts(false);
+      focusSearch();
+    } catch {
+      toast.error('Could not load that receipt.');
+    }
+  };
+
+  // ─── Keyboard shortcuts: F2 search, F4 hold, F6 return, F7 receipts, F9 checkout ──
   useEffect(() => {
     const handleKey = (e) => {
       // A dialog is open — don't checkout/hold underneath it.
-      if (showApproval || showRefundApproval || showReturnPicker) return;
+      if (showApproval || showRefundApproval || showReturnPicker || showReceipts) return;
       if (e.key === 'F6') {
         e.preventDefault();
         setShowReturnPicker(true);
+        return;
+      }
+      if (e.key === 'F7') {
+        e.preventDefault();
+        setShowReceipts(true);
         return;
       }
       if (e.key === 'F2') {
@@ -557,6 +595,7 @@ function Sales() {
       {/* Receipt of the last sale, rendered off-screen for printing */}
       <div style={{ display: 'none' }}>
         <Receipt ref={receiptRef} sale={lastSale} />
+        <Receipt ref={reprintRef} sale={reprint?.sale} />
       </div>
 
       {/* LEFT — product search */}
@@ -570,6 +609,13 @@ function Sales() {
               className="flex items-center gap-2 bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg hover:bg-red-100 text-sm"
             >
               <FaUndo size={12} /> Return / Exchange
+            </button>
+            <button
+              onClick={() => setShowReceipts(true)}
+              title="Find and reprint an earlier receipt (F7)"
+              className="flex items-center gap-2 bg-slate-50 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-200 text-sm"
+            >
+              <FaReceipt size={12} /> Receipts
             </button>
             <button
               onClick={handleHold}
@@ -1153,6 +1199,14 @@ function Sales() {
         />
       )}
 
+      {showReceipts && (
+        <ReceiptsModal
+          onClose={() => { setShowReceipts(false); focusSearch(); }}
+          onPrint={reprintReceipt}
+          showCashier={user?.role !== 'cashier'}
+        />
+      )}
+
       {showReturnPicker && (
         <ReturnPickerModal
           onClose={() => { setShowReturnPicker(false); focusSearch(); }}
@@ -1305,6 +1359,110 @@ function ApprovalModal({ approvers, message, request, onClose, onApproved }) {
             </button>
           </div>
         </form>
+      )}
+    </Modal>
+  );
+}
+
+// ─── Find and reprint an earlier receipt ───────────
+function ReceiptsModal({ onClose, onPrint, showCashier }) {
+  const [recent, setRecent] = useState(null); // null = loading
+  const [receipt, setReceipt] = useState('');
+  const [found, setFound] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [printingId, setPrintingId] = useState(null);
+
+  useEffect(() => {
+    saleService.getRecent()
+      .then((res) => setRecent(res.data))
+      .catch(() => { setRecent([]); toast.error('Could not load recent receipts.'); });
+  }, []);
+
+  const lookup = async (e) => {
+    e.preventDefault();
+    const seq = receipt.replace(/[^0-9]/g, '');
+    if (!seq) return;
+    setLoading(true);
+    setFound(null);
+    try {
+      const res = await saleService.getByReceiptSeq(seq);
+      if (res.data.status === 'held') {
+        toast.error('That bill was never completed.');
+        return;
+      }
+      setFound(res.data);
+    } catch (err) {
+      toast.error(err.response?.status === 404 ? 'Receipt not found. Check the number.' : 'Lookup failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const print = async (id) => {
+    setPrintingId(id);
+    await onPrint(id);
+    setPrintingId(null);
+  };
+
+  const row = (s) => (
+    <div key={s.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-slate-800">
+          RF-{String(s.receipt_seq).padStart(4, '0')} · Rs. {Number(s.total).toLocaleString()}
+        </p>
+        <p className="text-xs text-slate-500 truncate">
+          {new Date(s.created_at).toLocaleString()}
+          {showCashier && ` · ${s.cashier_name}`}
+        </p>
+      </div>
+      <button
+        onClick={() => print(s.id)}
+        disabled={printingId !== null}
+        className="flex items-center gap-1.5 bg-yellow-500 text-black px-3 py-1.5 rounded text-sm hover:bg-yellow-600 disabled:opacity-50"
+      >
+        <FaPrint size={12} /> {printingId === s.id ? 'Loading...' : 'Print'}
+      </button>
+    </div>
+  );
+
+  return (
+    <Modal onClose={onClose} titleId="receipts-modal-title" maxWidth="max-w-lg" scrollable>
+      <h3 id="receipts-modal-title" className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2">
+        <FaReceipt /> Reprint a receipt
+      </h3>
+      <p className="text-sm text-slate-500 mb-4">
+        Type the receipt number, or pick a recent one. Reprints are marked COPY.
+      </p>
+
+      <form onSubmit={lookup} className="flex gap-2 mb-3">
+        <input
+          value={receipt}
+          onChange={(e) => setReceipt(e.target.value)}
+          placeholder="Receipt no. e.g. RF-0012"
+          aria-label="Receipt number"
+          autoFocus
+          className="flex-1 px-3 py-2 border border-slate-300 rounded"
+        />
+        <button type="submit" disabled={loading} className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50">
+          {loading ? 'Finding...' : 'Find'}
+        </button>
+      </form>
+
+      {found && (
+        <div className="border border-blue-200 bg-blue-50/50 rounded-lg mb-4">{row(found)}</div>
+      )}
+
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+        {showCashier ? 'Recent sales' : 'Your recent sales'}
+      </p>
+      {recent === null ? (
+        <p className="text-sm text-slate-400 py-2">Loading...</p>
+      ) : recent.length === 0 ? (
+        <p className="text-sm text-slate-400 py-2">No sales yet.</p>
+      ) : (
+        <div className="border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {recent.map(row)}
+        </div>
       )}
     </Modal>
   );
