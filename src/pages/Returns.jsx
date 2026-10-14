@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { FaSearch, FaUndo } from 'react-icons/fa';
 import saleService from '../services/sale.service';
 import returnService from '../services/return.service';
+import { remainingQty, paidPerUnit, refundFor } from '../utils/returnMath';
 
 function Returns() {
   const [saleId, setSaleId] = useState('');
@@ -12,9 +13,6 @@ function Returns() {
   const [refundMethod, setRefundMethod] = useState('cash');
   const [reason, setReason] = useState('');
   const [processing, setProcessing] = useState(false);
-
-  // Remaining returnable qty for an item
-  const remainingQty = (item) => item.quantity - (item.already_returned || 0);
 
   const handleLookup = async () => {
     if (!saleId.trim()) {
@@ -45,10 +43,8 @@ function Returns() {
 
   const calculateRefund = () => {
     if (!sale) return 0;
-    return sale.items.reduce((sum, item) => {
-      const qty = returnItems[item.id] || 0;
-      return sum + qty * Number(item.unit_price);
-    }, 0);
+    // What the customer actually paid (after discounts) — same rule as the server.
+    return sale.items.reduce((sum, item) => sum + refundFor(item, returnItems[item.id] || 0), 0);
   };
 
   const handleProcessReturn = async () => {
@@ -57,7 +53,6 @@ function Returns() {
       .map((item) => ({
         saleItemId: item.id,
         quantity: returnItems[item.id],
-        refundAmount: returnItems[item.id] * Number(item.unit_price),
       }));
 
     if (itemsToReturn.length === 0) {
@@ -65,13 +60,10 @@ function Returns() {
       return;
     }
 
-    const refundAmount = calculateRefund();
-
     setProcessing(true);
     try {
       await returnService.create({
         originalSaleId: sale.id,
-        refundAmount,
         refundMethod,
         reason,
         items: itemsToReturn,
@@ -149,7 +141,7 @@ function Returns() {
                 <th className="text-left px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Item</th>
                 <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Sold Qty</th>
                 <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Returned</th>
-                <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Unit Price</th>
+                <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Paid / unit</th>
                 <th className="text-center px-3 py-2 font-medium text-[11px] uppercase tracking-wider">Return Qty</th>
               </tr>
             </thead>
@@ -171,7 +163,14 @@ function Returns() {
                         <span className="text-slate-400">0</span>
                       )}
                     </td>
-                    <td className="text-center px-3 py-2">Rs. {Number(item.unit_price).toLocaleString()}</td>
+                    <td className="text-center px-3 py-2">
+                      Rs. {paidPerUnit(item).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      {Number(item.discount_amount) > 0 && (
+                        <span className="block text-[11px] text-slate-400 line-through">
+                          Rs. {Number(item.unit_price).toLocaleString()}
+                        </span>
+                      )}
+                    </td>
                     <td className="text-center px-3 py-2">
                       {fullyReturned ? (
                         <span className="text-xs text-slate-400">— returned —</span>

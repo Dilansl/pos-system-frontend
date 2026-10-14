@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import useAuthStore from './store/authStore';
+import useAuthStore, { homePathFor } from './store/authStore';
 import { Toaster } from 'react-hot-toast';
 
 import Layout from './components/layout/Layout';
@@ -19,6 +19,11 @@ import BarcodePrint from './pages/BarcodePrint';
 function ProtectedRoute({ children }) {
   const token = useAuthStore((state) => state.token);
   return token ? children : <Navigate to="/login" />;
+}
+
+function HomeRedirect() {
+  const user = useAuthStore((state) => state.user);
+  return <Navigate to={homePathFor(user)} replace />;
 }
 
 function App() {
@@ -49,7 +54,7 @@ function App() {
            
         </Route>
 
-        <Route path="/" element={<Navigate to="/dashboard" />} />
+        <Route path="/" element={<HomeRedirect />} />
       </Routes>
     </BrowserRouter>
   );

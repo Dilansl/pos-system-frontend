@@ -1,10 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { FaBars } from 'react-icons/fa';
 import Sidebar from './Sidebar';
+import useShopStore from '../../store/shopStore';
 
 function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const loadShop = useShopStore((state) => state.load);
+
+  // Shop details for receipts/labels — once per login.
+  useEffect(() => {
+    loadShop();
+  }, [loadShop]);
 
   return (
     <div className="flex h-screen bg-slate-100">

@@ -21,6 +21,11 @@ const reportService = {
     return response.data;
   },
 
+  getDiscounts: async (startDate, endDate) => {
+    const response = await api.get(`/reports/discounts?startDate=${startDate}&endDate=${endDate}`);
+    return response.data;
+  },
+
   getPaymentBreakdown: async (startDate, endDate) => {
     const response = await api.get(`/reports/payments?startDate=${startDate}&endDate=${endDate}`);
     return response.data;

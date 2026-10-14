@@ -1,22 +1,37 @@
 import { forwardRef } from 'react';
+import useShopStore from '../../store/shopStore';
 
 const Receipt = forwardRef(({ sale }, ref) => {
+  const shop = useShopStore((state) => state.shop);
   if (!sale) return null;
 
   return (
     <div ref={ref} className="p-6 text-sm" style={{ width: '300px', fontFamily: 'monospace' }}>
-      {/* Header */}
+      {/* Header — shop details from settings (Staff → Shop details) */}
       <div className="text-center mb-4">
-        <h2 className="text-lg font-bold">ROPYCO Fashion</h2>
-        <p className="text-xs">Clothing Shop</p>
-        <p className="text-xs">Nittambuwwa, Sri Lanka</p>
-        <p className="text-xs">Tel: 0706201176</p>
+        <h2 className="text-lg font-bold">{shop.name}</h2>
+        {shop.tagline && <p className="text-xs">{shop.tagline}</p>}
+        {shop.address && <p className="text-xs">{shop.address}</p>}
+        {shop.phone && <p className="text-xs">Tel: {shop.phone}</p>}
+        {shop.tin && <p className="text-xs">TIN: {shop.tin}</p>}
       </div>
+
+      {sale.isCopy && (
+        <p className="text-center font-bold text-sm mb-2">*** COPY ***</p>
+      )}
+
+      {sale.isReturnOnly && (
+        <p className="text-center font-bold text-sm mb-2">*** REFUND ***</p>
+      )}
 
       <div className="border-t border-b border-dashed border-slate-400 py-2 mb-2 text-xs">
         <div className="flex justify-between">
-          <span>Receipt:</span>
-          <span>{sale.receipt_seq ? `RF-${String(sale.receipt_seq).padStart(4, '0')}` : `#${sale.id?.slice(0, 8)}`}</span>
+          <span>{sale.isReturnOnly ? 'Original bill:' : 'Receipt:'}</span>
+          <span>
+            {sale.isReturnOnly
+              ? `RF-${String(sale.exchange.original_receipt_seq).padStart(4, '0')}`
+              : sale.receipt_seq ? `RF-${String(sale.receipt_seq).padStart(4, '0')}` : `#${sale.id?.slice(0, 8)}`}
+          </span>
         </div>
         <div className="flex justify-between">
           <span>Cashier:</span>
@@ -29,6 +44,7 @@ const Receipt = forwardRef(({ sale }, ref) => {
       </div>
 
       {/* Items */}
+      {!sale.isReturnOnly && (
       <table className="w-full text-xs mb-2">
         <thead>
           <tr className="border-b border-dashed border-slate-400">
@@ -51,8 +67,25 @@ const Receipt = forwardRef(({ sale }, ref) => {
           ))}
         </tbody>
       </table>
+      )}
+
+      {/* Returned items (exchange or refund) */}
+      {sale.exchange && (
+        <div className="border-t border-dashed border-slate-400 pt-2 mb-2 text-xs">
+          <p className="font-bold mb-1">
+            RETURNED{!sale.isReturnOnly && ` (from RF-${String(sale.exchange.original_receipt_seq).padStart(4, '0')})`}
+          </p>
+          {sale.exchange.items?.map((r, idx) => (
+            <div key={idx} className="flex justify-between py-0.5">
+              <span>{r.product_name} {r.size}·{r.color} ×{r.quantity}</span>
+              <span>-{Number(r.refund_amount).toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Totals */}
+      {!sale.isReturnOnly && (
       <div className="border-t border-dashed border-slate-400 pt-2 text-xs">
         <div className="flex justify-between">
           <span>Subtotal:</span>
@@ -69,6 +102,15 @@ const Receipt = forwardRef(({ sale }, ref) => {
           <span>Rs. {Number(sale.total).toLocaleString()}</span>
         </div>
       </div>
+      )}
+
+      {/* Refund paid out */}
+      {Number(sale.refundOut) > 0 && (
+        <div className="border-t border-dashed border-slate-400 pt-2 mt-2 text-xs flex justify-between font-bold text-sm">
+          <span>REFUNDED ({sale.refundMethod}):</span>
+          <span>Rs. {Number(sale.refundOut).toLocaleString()}</span>
+        </div>
+      )}
 
       {/* Payment */}
       <div className="border-t border-dashed border-slate-400 pt-2 mt-2 text-xs">
@@ -94,7 +136,7 @@ const Receipt = forwardRef(({ sale }, ref) => {
       </div>
 
       <div className="text-center mt-4 text-xs">
-        <p>Thank you for shopping!</p>
+        {shop.receiptFooter && <p>{shop.receiptFooter}</p>}
         <p className="text-slate-500">Please keep this receipt</p>
       </div>
     </div>

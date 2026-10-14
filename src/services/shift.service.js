@@ -16,6 +16,12 @@ const shiftService = {
     return response.data;
   },
 
+  // Petty cash: { type: 'in'|'out', amount, reason, approverId?, pin? }
+  addCashMovement: async (data) => {
+    const response = await api.post('/shifts/cash-movement', data);
+    return response.data;
+  },
+
   getById: async (id) => {
     const response = await api.get(`/shifts/${id}`);
     return response.data;

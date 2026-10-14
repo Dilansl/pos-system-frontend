@@ -21,6 +21,7 @@ function Reports() {
   const [byDay, setByDay] = useState([]);
   const [bestSellers, setBestSellers] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [discounts, setDiscounts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const loadReports = async () => {
@@ -29,12 +30,14 @@ function Reports() {
       // End date needs to include the full day
       const end = `${endDate}T23:59:59`;
 
-      const [summaryRes, byDayRes, bestRes, payRes] = await Promise.all([
+      const [summaryRes, byDayRes, bestRes, payRes, discRes] = await Promise.all([
         reportService.getSummary(startDate, end),
         reportService.getByDay(startDate, end),
         reportService.getBestSellers(startDate, end),
         reportService.getPaymentBreakdown(startDate, end),
+        reportService.getDiscounts(startDate, end),
       ]);
+      setDiscounts(discRes.data);
 
       setSummary(summaryRes.data);
       setByDay(byDayRes.data.map((d) => ({
@@ -182,6 +185,50 @@ function Reports() {
                 </ResponsiveContainer>
               )}
             </div>
+          </div>
+
+          {/* Cashier discount log */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 mt-6">
+            <div className="flex flex-wrap justify-between items-baseline gap-2 mb-4">
+              <h3 className="font-bold text-slate-800">Discounts Given</h3>
+              {discounts.length > 0 && (
+                <p className="text-sm text-slate-500">
+                  {discounts.length} discount{discounts.length > 1 ? 's' : ''} ·
+                  Rs. {discounts.reduce((s, d) => s + Number(d.discount_amount), 0).toLocaleString()} total ·
+                  {' '}{discounts.filter((d) => d.approved_by_name).length} manager-approved
+                </p>
+              )}
+            </div>
+            {discounts.length === 0 ? (
+              <p className="text-slate-400 text-sm">No cashier discounts in this period.</p>
+            ) : (
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50/80 text-slate-500 sticky top-0">
+                    <tr>
+                      {['Date', 'Receipt', 'Cashier', 'Item', 'Discount', 'Reason', 'Approved by'].map((h) => (
+                        <th key={h} className="text-left px-3 py-2 font-medium text-[11px] uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {discounts.map((d) => (
+                      <tr key={d.id} className="border-t border-slate-100">
+                        <td className="px-3 py-2 text-slate-500 text-xs whitespace-nowrap">{new Date(d.created_at).toLocaleString()}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{d.receipt_seq ? `RF-${String(d.receipt_seq).padStart(4, '0')}` : '—'}</td>
+                        <td className="px-3 py-2">{d.cashier_name}</td>
+                        <td className="px-3 py-2">{d.product_name}{d.size ? ` (${d.size}/${d.color})` : ''}</td>
+                        <td className={`px-3 py-2 whitespace-nowrap ${d.approved_by_name ? 'text-red-600 font-medium' : ''}`}>
+                          Rs. {Number(d.discount_amount).toLocaleString()} ({Number(d.discount_percent)}%)
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{d.reason || '—'}</td>
+                        <td className="px-3 py-2">{d.approved_by_name || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}

@@ -4,6 +4,7 @@ import { useReactToPrint } from 'react-to-print';
 import { FaBarcode, FaPrint, FaSearch } from 'react-icons/fa';
 import JsBarcode from 'jsbarcode';
 import productService from '../services/product.service';
+import useShopStore from '../store/shopStore';
 
 // Single barcode label (name + barcode + price) — used for PREVIEW
 function BarcodeLabel({ shopName, productName, code, price, labelWidth, labelHeight }) {
@@ -76,7 +77,7 @@ function PrintLabel({ shopName, productName, code, price }) {
 }
 
 function BarcodePrint() {
-  const SHOP_NAME = 'ROPYCO Fashion';
+  const shopName = useShopStore((state) => state.shop.name);
 
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState('');
@@ -134,8 +135,8 @@ function BarcodePrint() {
     // default ("frontend") — that's the literal source of the bug.
     documentTitle: () =>
       selectedProduct
-        ? `${SHOP_NAME} - ${selectedProduct.name} Barcode Label`
-        : `${SHOP_NAME} - Barcode Label`,
+        ? `${shopName} - ${selectedProduct.name} Barcode Label`
+        : `${shopName} - Barcode Label`,
   });
 
   // The price to show: variant price override, else product base price
@@ -271,7 +272,7 @@ function BarcodePrint() {
           {selectedVariant ? (
             <div className="flex flex-wrap gap-3">
               <BarcodeLabel
-              shopName={SHOP_NAME}
+              shopName={shopName}
               productName={selectedProduct.name}
               code={labelCode}
               price={labelPrice}
@@ -331,7 +332,7 @@ function BarcodePrint() {
               Array.from({ length: quantity }).map((_, i) => (
                 <PrintLabel
                   key={i}
-                  shopName={SHOP_NAME}
+                  shopName={shopName}
                   productName={selectedProduct.name}
                   code={labelCode}
                   price={labelPrice}
