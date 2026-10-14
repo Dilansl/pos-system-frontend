@@ -12,6 +12,17 @@ const settingsService = {
     return response.data;
   },
 
+  // { name, tagline, address, phone, tin, receiptFooter }
+  getShop: async () => {
+    const response = await api.get('/settings/shop');
+    return response.data;
+  },
+
+  setShop: async (shop) => {
+    const response = await api.put('/settings/shop', shop);
+    return response.data;
+  },
+
   // { cashOutLimit, approvers: [{ id, name, role }] }
   getCash: async () => {
     const response = await api.get('/settings/cash');

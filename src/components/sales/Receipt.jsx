@@ -1,16 +1,19 @@
 import { forwardRef } from 'react';
+import useShopStore from '../../store/shopStore';
 
 const Receipt = forwardRef(({ sale }, ref) => {
+  const shop = useShopStore((state) => state.shop);
   if (!sale) return null;
 
   return (
     <div ref={ref} className="p-6 text-sm" style={{ width: '300px', fontFamily: 'monospace' }}>
-      {/* Header */}
+      {/* Header — shop details from settings (Staff → Shop details) */}
       <div className="text-center mb-4">
-        <h2 className="text-lg font-bold">ROPYCO Fashion</h2>
-        <p className="text-xs">Clothing Shop</p>
-        <p className="text-xs">Nittambuwwa, Sri Lanka</p>
-        <p className="text-xs">Tel: 0706201176</p>
+        <h2 className="text-lg font-bold">{shop.name}</h2>
+        {shop.tagline && <p className="text-xs">{shop.tagline}</p>}
+        {shop.address && <p className="text-xs">{shop.address}</p>}
+        {shop.phone && <p className="text-xs">Tel: {shop.phone}</p>}
+        {shop.tin && <p className="text-xs">TIN: {shop.tin}</p>}
       </div>
 
       {sale.isCopy && (
@@ -133,7 +136,7 @@ const Receipt = forwardRef(({ sale }, ref) => {
       </div>
 
       <div className="text-center mt-4 text-xs">
-        <p>Thank you for shopping!</p>
+        {shop.receiptFooter && <p>{shop.receiptFooter}</p>}
         <p className="text-slate-500">Please keep this receipt</p>
       </div>
     </div>

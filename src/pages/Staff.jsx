@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaPlus, FaUserShield, FaKey, FaUserSlash, FaUserCheck, FaEdit, FaLock, FaPercent, FaMoneyBillWave } from 'react-icons/fa';
+import { FaPlus, FaUserShield, FaKey, FaUserSlash, FaUserCheck, FaEdit, FaLock, FaPercent, FaMoneyBillWave, FaStore } from 'react-icons/fa';
 import staffService from '../services/staff.service';
 import settingsService from '../services/settings.service';
 import Modal from '../components/common/Modal';
+import useShopStore from '../store/shopStore';
 
 function Staff() {
   const [staff, setStaff] = useState([]);
@@ -121,6 +122,7 @@ function Staff() {
         </div>
       )}
 
+      <ShopDetailsCard />
       <DiscountLimitsCard />
       <CashOutLimitCard />
 
@@ -386,6 +388,80 @@ function DiscountLimitsCard() {
       </div>
       <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50 text-sm">
         {saving ? 'Saving...' : 'Save limits'}
+      </button>
+    </div>
+  );
+}
+
+// ─── Shop details printed on receipts / labels ────
+const SHOP_FIELDS = [
+  { key: 'name', label: 'Shop name', placeholder: 'ROPYCO Fashion', max: 60 },
+  { key: 'tagline', label: 'Line under the name', placeholder: 'Clothing Shop', max: 60 },
+  { key: 'address', label: 'Address', placeholder: 'No. 12, Main Street, Nittambuwa', max: 120 },
+  { key: 'phone', label: 'Phone', placeholder: '070 620 1176', max: 60 },
+  { key: 'tin', label: 'TIN (leave blank to hide)', placeholder: 'e.g. 123456789', max: 60 },
+  { key: 'receiptFooter', label: 'Message at the bottom of the receipt', placeholder: 'Thank you for shopping!', max: 120 },
+];
+
+function ShopDetailsCard() {
+  const savedShop = useShopStore((state) => state.shop);
+  const loadShop = useShopStore((state) => state.load);
+  const saveShop = useShopStore((state) => state.save);
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  // Start from the server's copy, not a possibly stale cached one.
+  useEffect(() => {
+    loadShop().then(() => setForm({ ...useShopStore.getState().shop }));
+  }, [loadShop]);
+
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      toast.error('Enter the shop name.');
+      return;
+    }
+    setSaving(true);
+    try {
+      setForm({ ...(await saveShop(form)) });
+      toast.success('Shop details saved. New receipts will use them.');
+    } catch (err) {
+      toast.error(err.response?.data?.errors?.[0]?.message || err.response?.data?.message || 'Failed to save shop details.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!form) return null;
+  const changed = SHOP_FIELDS.some(({ key }) => (form[key] || '') !== (savedShop[key] || ''));
+
+  return (
+    <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 max-w-xl">
+      <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-1">
+        <FaStore size={12} /> Shop details
+      </h3>
+      <p className="text-sm text-slate-500 mb-4">
+        Printed at the top of every receipt (the shop name also goes on barcode labels).
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        {SHOP_FIELDS.map(({ key, label, placeholder, max }) => (
+          <label key={key} className={`text-sm ${max > 60 ? 'sm:col-span-2' : ''}`}>
+            <span className="block text-slate-600 mb-1">{label}</span>
+            <input
+              value={form[key] || ''}
+              onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+              placeholder={placeholder}
+              maxLength={max}
+              className="w-full px-3 py-2 border border-slate-300 rounded"
+            />
+          </label>
+        ))}
+      </div>
+      <button
+        onClick={handleSave}
+        disabled={saving || !changed}
+        className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50 text-sm"
+      >
+        {saving ? 'Saving...' : 'Save shop details'}
       </button>
     </div>
   );
