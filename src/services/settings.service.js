@@ -11,6 +11,17 @@ const settingsService = {
     const response = await api.put('/settings/discount-limits', limits);
     return response.data;
   },
+
+  // { cashOutLimit, approvers: [{ id, name, role }] }
+  getCash: async () => {
+    const response = await api.get('/settings/cash');
+    return response.data;
+  },
+
+  setCashOutLimit: async (amount) => {
+    const response = await api.put('/settings/cash-out-limit', { amount });
+    return response.data;
+  },
 };
 
 export default settingsService;

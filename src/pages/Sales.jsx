@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
-import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes, FaUserShield, FaCashRegister, FaUndo, FaReceipt } from 'react-icons/fa';
+import { FaSearch, FaTrash, FaPlus, FaMinus, FaShoppingCart, FaPrint, FaCheckCircle, FaPause, FaLayerGroup, FaTimes, FaUserShield, FaCashRegister, FaUndo, FaReceipt, FaMoneyBillWave } from 'react-icons/fa';
 import productService from '../services/product.service';
 import saleService from '../services/sale.service';
 import settingsService from '../services/settings.service';
@@ -11,6 +11,7 @@ import useCartStore from '../store/cartStore';
 import useAuthStore from '../store/authStore';
 import Receipt from '../components/sales/Receipt';
 import Modal from '../components/common/Modal';
+import CashMovementModal from '../components/shift/CashMovementModal';
 import offlineQueue from '../utils/offlineQueue';
 import { compareVariants } from '../utils/sizeSort';
 import { beep } from '../utils/beep';
@@ -58,6 +59,7 @@ function Sales() {
   const [showHeldList, setShowHeldList] = useState(false);
   const [showHoldName, setShowHoldName] = useState(false);
   const [heldFilter, setHeldFilter] = useState('');
+  const [showCashMove, setShowCashMove] = useState(false);
   // Discount control: per-role limits + who can approve (from settings), the
   // manager approval for this checkout (if any), and the cashier's reason.
   const [discountSettings, setDiscountSettings] = useState({ limits: {}, approvers: [] });
@@ -567,7 +569,7 @@ function Sales() {
   useEffect(() => {
     const handleKey = (e) => {
       // A dialog is open — don't checkout/hold underneath it.
-      if (showApproval || showRefundApproval || showReturnPicker || showReceipts || showHoldName) return;
+      if (showApproval || showRefundApproval || showReturnPicker || showReceipts || showHoldName || showCashMove) return;
       if (e.key === 'F6') {
         e.preventDefault();
         setShowReturnPicker(true);
@@ -636,6 +638,15 @@ function Sales() {
             >
               <FaReceipt size={12} /> Receipts
             </button>
+            {shift && (
+              <button
+                onClick={() => setShowCashMove(true)}
+                title="Record petty cash taken out of / put into the drawer"
+                className="flex items-center gap-2 bg-slate-50 text-slate-700 border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-200 text-sm"
+              >
+                <FaMoneyBillWave size={12} /> Cash In/Out
+              </button>
+            )}
             <button
               onClick={handleHold}
               title="Hold sale (F4)"
@@ -1230,6 +1241,10 @@ function Sales() {
             handleCheckout(null, granted);
           }}
         />
+      )}
+
+      {showCashMove && (
+        <CashMovementModal onClose={() => { setShowCashMove(false); focusSearch(); }} />
       )}
 
       {showHoldName && (

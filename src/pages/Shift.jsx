@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaCashRegister, FaLock, FaLockOpen } from 'react-icons/fa';
+import { FaCashRegister, FaLock, FaLockOpen, FaMoneyBillWave } from 'react-icons/fa';
 import shiftService from '../services/shift.service';
+import CashMovementModal from '../components/shift/CashMovementModal';
 
 function Shift() {
   const [current, setCurrent] = useState(null);
@@ -11,6 +12,7 @@ function Shift() {
   const [notes, setNotes] = useState('');
   const [processing, setProcessing] = useState(false);
   const [lastClosed, setLastClosed] = useState(null);
+  const [showCashMove, setShowCashMove] = useState(false);
 
   const loadCurrent = async () => {
     setLoading(true);
@@ -68,9 +70,10 @@ function Shift() {
     }
   };
 
-  // Expected drawer = opening cash + cash sales − cash refunds
+  // Expected drawer = opening cash + cash sales − cash refunds + cash in − cash out
   const expectedDrawer = (shift, cashSales) =>
-    Number(shift.opening_cash) + Number(cashSales || 0) - Number(shift.cash_refunds || 0);
+    Number(shift.opening_cash) + Number(cashSales || 0) - Number(shift.cash_refunds || 0)
+    + Number(shift.cash_in || 0) - Number(shift.cash_out || 0);
 
   return (
     <div className="p-6 max-w-2xl">
@@ -102,6 +105,44 @@ function Shift() {
                 <p className="text-xs text-slate-500">Notes</p>
                 <p className="text-sm text-slate-700">{current.notes}</p>
               </div>
+            )}
+          </div>
+
+          {/* Petty cash during the shift */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h3 className="font-medium text-slate-700">Cash in / out</h3>
+              <button
+                onClick={() => setShowCashMove(true)}
+                className="flex items-center gap-2 bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-200 text-sm"
+              >
+                <FaMoneyBillWave size={12} /> Add
+              </button>
+            </div>
+            {current.cash_movements?.length ? (
+              <>
+                <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 text-sm">
+                  {current.cash_movements.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-slate-800 truncate">{m.reason}</p>
+                        <p className="text-xs text-slate-400">
+                          {new Date(m.created_at).toLocaleTimeString()}
+                          {m.approved_by_name && ` · approved by ${m.approved_by_name}`}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 font-medium ${m.type === 'in' ? 'text-green-700' : 'text-red-600'}`}>
+                        {m.type === 'in' ? '+' : '−'}Rs. {Number(m.amount).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  In: Rs. {Number(current.cash_in).toLocaleString()} · Out: Rs. {Number(current.cash_out).toLocaleString()}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-400">None yet. Record money taken out for expenses, or float added.</p>
             )}
           </div>
 
@@ -149,6 +190,12 @@ function Shift() {
                 <div><span className="text-slate-500">Cash Sales:</span> Rs. {Number(lastClosed.cash_sales || 0).toLocaleString()}</div>
                 {Number(lastClosed.cash_refunds) > 0 && (
                   <div><span className="text-slate-500">Cash Refunds:</span> −Rs. {Number(lastClosed.cash_refunds).toLocaleString()}</div>
+                )}
+                {Number(lastClosed.cash_in) > 0 && (
+                  <div><span className="text-slate-500">Cash In:</span> Rs. {Number(lastClosed.cash_in).toLocaleString()}</div>
+                )}
+                {Number(lastClosed.cash_out) > 0 && (
+                  <div><span className="text-slate-500">Cash Out:</span> −Rs. {Number(lastClosed.cash_out).toLocaleString()}</div>
                 )}
                 <div><span className="text-slate-500">Expected in Drawer:</span> Rs. {expectedDrawer(lastClosed, lastClosed.cash_sales).toLocaleString()}</div>
                 <div><span className="text-slate-500">Counted (Closing):</span> Rs. {Number(lastClosed.closing_cash).toLocaleString()}</div>
@@ -202,6 +249,10 @@ function Shift() {
             </button>
           </div>
         </>
+      )}
+
+      {showCashMove && (
+        <CashMovementModal onClose={() => setShowCashMove(false)} onSaved={loadCurrent} />
       )}
     </div>
   );

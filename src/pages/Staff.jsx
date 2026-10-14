@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { FaPlus, FaUserShield, FaKey, FaUserSlash, FaUserCheck, FaEdit, FaLock, FaPercent } from 'react-icons/fa';
+import { FaPlus, FaUserShield, FaKey, FaUserSlash, FaUserCheck, FaEdit, FaLock, FaPercent, FaMoneyBillWave } from 'react-icons/fa';
 import staffService from '../services/staff.service';
 import settingsService from '../services/settings.service';
 import Modal from '../components/common/Modal';
@@ -122,6 +122,7 @@ function Staff() {
       )}
 
       <DiscountLimitsCard />
+      <CashOutLimitCard />
 
       {pinStaff && (
         <PinModal
@@ -385,6 +386,65 @@ function DiscountLimitsCard() {
       </div>
       <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50 text-sm">
         {saving ? 'Saving...' : 'Save limits'}
+      </button>
+    </div>
+  );
+}
+
+// ─── Petty cash: cashier cash-out limit ───────────
+function CashOutLimitCard() {
+  const [limit, setLimit] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    settingsService.getCash()
+      .then((res) => setLimit(res.data.cashOutLimit))
+      .catch(() => toast.error('Failed to load the cash-out limit.'));
+  }, []);
+
+  const handleSave = async () => {
+    if (limit === '' || Number(limit) < 0) {
+      toast.error('Enter a limit (0 or more).');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await settingsService.setCashOutLimit(Number(limit));
+      setLimit(res.data);
+      toast.success('Cash-out limit saved.');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save the limit.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (limit === null) return null;
+
+  return (
+    <div className="mt-6 bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 max-w-xl">
+      <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-1">
+        <FaMoneyBillWave size={12} /> Petty cash limit
+      </h3>
+      <p className="text-sm text-slate-500 mb-4">
+        The most a cashier can take out of the drawer at once (tea, transport...) without a manager PIN.
+        Set 0 to always ask for a PIN.
+      </p>
+      <label className="text-sm block mb-4 max-w-[12rem]">
+        <span className="block text-slate-600 mb-1">Cashier, per cash-out</span>
+        <div className="flex items-center gap-1">
+          <span className="text-slate-500">Rs.</span>
+          <input
+            type="number"
+            min="0"
+            value={limit}
+            onChange={(e) => setLimit(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded"
+          />
+        </div>
+      </label>
+      <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-600 disabled:opacity-50 text-sm">
+        {saving ? 'Saving...' : 'Save limit'}
       </button>
     </div>
   );
