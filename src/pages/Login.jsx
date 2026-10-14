@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authService from '../services/auth.service';
-import useAuthStore from '../store/authStore';
+import useAuthStore, { homePathFor } from '../store/authStore';
 import toast from 'react-hot-toast';
 import { FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 
@@ -25,7 +25,7 @@ function Login() {
       const result = await authService.login(username, password);
       login(result.data.user, result.data.token);
       toast.success(`Welcome back, ${result.data.user.name}!`);
-      navigate('/dashboard');
+      navigate(homePathFor(result.data.user));
     } catch (err) {
       const msg = err.response?.data?.message || 'Login failed. Please try again.';
       toast.error(msg);
