@@ -89,6 +89,33 @@ function BarcodePrint() {
   const [loading, setLoading] = useState(true);
   const [labelWidth, setLabelWidth] = useState(50);
   const [labelHeight, setLabelHeight] = useState(30);
+  // Many thermal label printers have their paper defined as portrait, so a
+  // label wider than tall comes out turned. 'cw'/'ccw' print the page with
+  // width/height swapped and the label rotated inside it. Remembered per PC.
+  const [rotation, setRotation] = useState(() => {
+    try {
+      return localStorage.getItem('labelRotation') || 'none';
+    } catch {
+      return 'none';
+    }
+  });
+  const changeRotation = (value) => {
+    setRotation(value);
+    try {
+      localStorage.setItem('labelRotation', value);
+    } catch {
+      // storage blocked — choice just won't be remembered
+    }
+  };
+  const rotated = rotation !== 'none';
+  const pageWidth = rotated ? labelHeight : labelWidth;
+  const pageHeight = rotated ? labelWidth : labelHeight;
+  const labelTransform =
+    rotation === 'cw'
+      ? `translateX(${labelHeight}mm) rotate(90deg)`
+      : rotation === 'ccw'
+        ? `translateY(${labelWidth}mm) rotate(-90deg)`
+        : 'none';
 
   const printRef = useRef();
 
@@ -243,7 +270,27 @@ function BarcodePrint() {
                 <button onClick={() => { setLabelWidth(70); setLabelHeight(40); }} className="text-xs px-2 py-1 bg-slate-100 rounded hover:bg-slate-200">70×40</button>
               </div>
 
-              <h3 className="font-medium text-slate-700 mb-2">4. Quantity</h3>
+              <h3 className="font-medium text-slate-700 mb-2">4. Print Direction</h3>
+              <div className="grid grid-cols-3 gap-1 mb-1">
+                {[
+                  ['none', 'Normal'],
+                  ['cw', 'Rotate ↻'],
+                  ['ccw', 'Rotate ↺'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    onClick={() => changeRotation(value)}
+                    className={`text-xs px-2 py-1.5 rounded ${rotation === value ? 'bg-yellow-500 text-black' : 'bg-slate-100 hover:bg-slate-200'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mb-4">
+                Label printing sideways? Try Rotate ↻ (or ↺ if it comes out upside-down). This PC remembers it.
+              </p>
+
+              <h3 className="font-medium text-slate-700 mb-2">5. Quantity</h3>
               <input
                 type="number"
                 min="1"
@@ -304,14 +351,26 @@ function BarcodePrint() {
                  the page in Chrome, Edge, or Firefox. See the tip next to the
                  Print button for the actual (browser-side) mitigation. */
               @page {
-                size: ${labelWidth}mm ${labelHeight}mm;
+                size: ${pageWidth}mm ${pageHeight}mm;
                 margin: 0;
               }
               .label-sheet { margin: 0; padding: 0; }
+              .print-page {
+                width: ${pageWidth}mm;
+                height: ${pageHeight}mm;
+                position: relative;
+                overflow: hidden;
+                page-break-after: always;
+              }
+              .print-page:last-child { page-break-after: auto; }
               .print-label {
+                position: absolute;
+                top: 0;
+                left: 0;
                 width: ${labelWidth}mm;
                 height: ${labelHeight}mm;
-                page-break-after: always;
+                transform-origin: top left;
+                transform: ${labelTransform};
                 display: flex;
                 flex-direction: column;
                 align-items: center;
@@ -320,7 +379,6 @@ function BarcodePrint() {
                 padding: 1mm;
                 overflow: hidden;
               }
-              .print-label:last-child { page-break-after: auto; }
               .print-label .shop { font-size: 8pt; font-weight: bold; margin: 0; }
               .print-label .product { font-size: 7pt; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: ${labelWidth - 2}mm; }
               .print-label .price { font-size: 10pt; font-weight: bold; margin: 0; }
@@ -330,13 +388,14 @@ function BarcodePrint() {
           <div className="label-sheet">
             {selectedVariant &&
               Array.from({ length: quantity }).map((_, i) => (
-                <PrintLabel
-                  key={i}
-                  shopName={shopName}
-                  productName={selectedProduct.name}
-                  code={labelCode}
-                  price={labelPrice}
-                />
+                <div className="print-page" key={i}>
+                  <PrintLabel
+                    shopName={shopName}
+                    productName={selectedProduct.name}
+                    code={labelCode}
+                    price={labelPrice}
+                  />
+                </div>
               ))}
           </div>
         </div>
